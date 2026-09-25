@@ -1,0 +1,14 @@
+[Unit]
+Description=Chromecast Voice Typing & Dictation Daemon
+After=graphical-session.target pipewire.service atvvoice.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/home/magnotec/Projects/desktop/chromecast-remote/venv/bin/python3 /home/magnotec/Projects/desktop/chromecast-remote/voice_daemon.py
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,95 @@
+[device]
+enabled = true
+name_pattern = "Chromecast Remote"
+grab_device = true
+reconnect_poll_interval = 1.5
+
+[general]
+initial_mode = "media"
+long_press_threshold_sec = 0.4
+notifications = false
+sound_feedback = false
+
+[mouse]
+base_speed = 12.0
+max_speed = 75.0
+acceleration = 1.25
+poll_rate_ms = 16
+scroll_step = 2
+
+[voice]
+enabled = true
+model = "medium.en"
+paste_method = "keystrokes"
+min_duration_sec = 0.35
+auto_spacing = true
+device = "cuda"
+compute_type = "float16"
+
+[mode.media]
+KEY_CAMERA_ACCESS_DISABLE = "key:KEY_TAB"
+KEY_CAMERA_ACCESS_TOGGLE = "keys:KEY_LEFTSHIFT+KEY_TAB"
+KEY_HOMEPAGE = "key:KEY_LEFTMETA"
+KEY_KBDILLUMUP = "key:KEY_TAB"
+KEY_LEFT = "key:KEY_LEFT"
+KEY_MUTE = "action:quick_settings"
+KEY_RIGHT = "key:KEY_RIGHT"
+KEY_TV = "action:toggle_mode"
+KEY_VOLUMEDOWN = "key:KEY_VOLUMEDOWN"
+KEY_VOLUMEUP = "key:KEY_VOLUMEUP"
+
+[mode.media.KEY_BACK]
+double_tap = "keys:KEY_LEFTCTRL+KEY_BACKSPACE"
+long_press = "action:close_window"
+tap = "key:KEY_ESC"
+
+[mode.media.KEY_COFFEE]
+long_press = "action:suspend"
+tap = "action:screen_off"
+
+[mode.media.KEY_DOWN]
+long_press = "action:scroll_down"
+tap = "key:KEY_DOWN"
+
+[mode.media.KEY_SCREENLOCK]
+long_press = "action:suspend"
+tap = "action:screen_off"
+
+[mode.media.KEY_SELECT]
+long_press = "key:KEY_ENTER"
+tap = "key:KEY_SPACE"
+
+[mode.media.KEY_UP]
+long_press = "action:scroll_up"
+tap = "key:KEY_UP"
+
+[mode.mouse]
+KEY_CAMERA_ACCESS_DISABLE = "key:KEY_TAB"
+KEY_CAMERA_ACCESS_TOGGLE = "keys:KEY_LEFTSHIFT+KEY_TAB"
+KEY_DOWN = "mouse:move_down"
+KEY_HOMEPAGE = "key:KEY_LEFTMETA"
+KEY_KBDILLUMUP = "key:KEY_TAB"
+KEY_LEFT = "mouse:move_left"
+KEY_MUTE = "action:quick_settings"
+KEY_RIGHT = "mouse:move_right"
+KEY_TV = "action:toggle_mode"
+KEY_UP = "mouse:move_up"
+KEY_VOLUMEDOWN = "key:KEY_VOLUMEDOWN"
+KEY_VOLUMEUP = "key:KEY_VOLUMEUP"
+
+[mode.mouse.KEY_BACK]
+double_tap = "keys:KEY_LEFTCTRL+KEY_BACKSPACE"
+long_press = "action:close_window"
+tap = "action:mouse_right_click"
+
+[mode.mouse.KEY_COFFEE]
+long_press = "action:suspend"
+tap = "action:screen_off"
+
+[mode.mouse.KEY_SCREENLOCK]
+long_press = "action:suspend"
+tap = "action:screen_off"
+
+[mode.mouse.KEY_SELECT]
+long_press = "action:toggle_mode"
+tap = "action:mouse_left_click"

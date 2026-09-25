@@ -1,0 +1,14 @@
+[Unit]
+Description=Chromecast Remote PC Controller Daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/home/magnotec/Projects/desktop/chromecast-remote/venv/bin/python3 /home/magnotec/Projects/desktop/chromecast-remote/remote_daemon.py
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target

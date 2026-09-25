@@ -1,0 +1,13 @@
+[Unit]
+Description=ATVVoice - Chromecast Remote BLE Microphone Daemon
+After=pipewire.service wireplumber.service bluetooth.target
+Wants=pipewire.service
+
+[Service]
+Type=simple
+ExecStart=/home/magnotec/Projects/desktop/chromecast-remote/bin/atvvoice -d 6C:B2:FD:DA:8B:4C --frame-timeout 0 -g 10
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

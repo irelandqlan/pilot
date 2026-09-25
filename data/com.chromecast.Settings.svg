@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <filter id="shadow" x="-25%" y="-10%" width="150%" height="130%">
+      <feDropShadow dx="0" dy="2.5" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="btn-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0.7" stdDeviation="0.6" flood-color="#000000" flood-opacity="0.15"/>
+    </filter>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#28303d"/>
+      <stop offset="100%" stop-color="#181c24"/>
+    </linearGradient>
+    <linearGradient id="remote-body" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="65%" stop-color="#f2f4f7"/>
+      <stop offset="100%" stop-color="#e1e5eb"/>
+    </linearGradient>
+    <linearGradient id="dpad-outer" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f5f7fa"/>
+      <stop offset="100%" stop-color="#dbe0e7"/>
+    </linearGradient>
+    <linearGradient id="dpad-center" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#eaedf2"/>
+    </linearGradient>
+    <linearGradient id="btn-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f0f3f7"/>
+      <stop offset="100%" stop-color="#d8dee6"/>
+    </linearGradient>
+    <linearGradient id="btn-tray" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e6ebf1"/>
+      <stop offset="100%" stop-color="#d0d6df"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background squircle matching Obelisk exactly -->
+  <rect x="8" y="8" width="112" height="112" rx="24" fill="url(#bg-grad)"/>
+
+  <!-- Volume Rocker on right edge -->
+  <rect x="84.5" y="31" width="3" height="18" rx="1.5" fill="#d2d7df" filter="url(#shadow)"/>
+
+  <!-- Remote Body Pill (width=42, height=94, rx=21) -->
+  <rect x="43" y="17" width="42" height="94" rx="21" fill="url(#remote-body)" filter="url(#shadow)"/>
+
+  <!-- Outer D-Pad Ring (Hugs the edge closely: radius 19, leaving just 2px margin) -->
+  <circle cx="64" cy="38" r="19" fill="url(#dpad-outer)"/>
+  <!-- D-Pad edge inner bevel / groove -->
+  <circle cx="64" cy="38" r="18.2" fill="none" stroke="#cdd3dc" stroke-width="0.6"/>
+
+  <!-- Center Select Button -->
+  <circle cx="64" cy="38" r="8.5" fill="url(#dpad-center)" filter="url(#btn-shadow)"/>
+  <circle cx="64" cy="38" r="8.5" fill="none" stroke="#ccd2db" stroke-width="0.5"/>
+
+  <!-- Button Row 1 (y=62): Back & Assistant -->
+  <circle cx="54" cy="62" r="4.5" fill="url(#btn-grad)" filter="url(#btn-shadow)"/>
+  <circle cx="74" cy="62" r="4.5" fill="url(#btn-grad)" filter="url(#btn-shadow)"/>
+
+  <!-- Button Row 2 (y=73): Home & Mute -->
+  <circle cx="54" cy="73" r="4.5" fill="url(#btn-grad)" filter="url(#btn-shadow)"/>
+  <circle cx="74" cy="73" r="4.5" fill="url(#btn-grad)" filter="url(#btn-shadow)"/>
+
+  <!-- Button Row 3 (y=84): YouTube & Netflix -->
+  <circle cx="54" cy="84" r="4.5" fill="url(#btn-grad)" filter="url(#btn-shadow)"/>
+  <circle cx="74" cy="84" r="4.5" fill="url(#btn-grad)" filter="url(#btn-shadow)"/>
+
+  <!-- Button Row 4 (y=94.5): Bottom recessed tray with Power, Mic Dash, Input -->
+  <circle cx="54" cy="94.5" r="3.4" fill="url(#btn-tray)" filter="url(#btn-shadow)"/>
+  <!-- Center Mic LED indicator dash -->
+  <rect x="62.8" y="94" width="2.4" height="1" rx="0.5" fill="#9aa3af"/>
+  <circle cx="74" cy="94.5" r="3.4" fill="url(#btn-tray)" filter="url(#btn-shadow)"/>
+</svg>

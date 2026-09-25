@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Chromecast Remote
+Comment=Configure Chromecast Bluetooth remote PC control and voice dictation
+Exec=/home/magnotec/.local/bin/chromecast-settings
+Icon=com.chromecast.Settings
+Terminal=false
+Type=Application
+Categories=Settings;HardwareSettings;GTK;GNOME;Utility;
+Keywords=chromecast;remote;bluetooth;controller;mouse;voice;whisper;dictation;
+StartupNotify=true
+X-Purism-FormFactor=Workstation;Mobile;
