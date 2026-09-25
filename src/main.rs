@@ -232,28 +232,6 @@ fn load_custom_css() {
             box-shadow: 0 0 14px @accent_bg_color;
             transform: scale(0.94);
         }
-        .navigation-sidebar row {
-            border-radius: 8px;
-            margin: 2px 6px;
-            padding: 0px;
-        }
-        .menu-box {
-            padding: 4px;
-        }
-        .menu-btn {
-            border-radius: 8px;
-            padding: 6px 10px;
-            margin: 0px 0px;
-            font-weight: normal;
-            transition: none;
-        }
-        .menu-btn:hover {
-            background-color: alpha(currentColor, 0.08);
-        }
-        .menu-separator {
-            margin: 4px 0;
-            background-color: alpha(currentColor, 0.1);
-        }
         ",
     );
     gtk::style_context_add_provider_for_display(
@@ -295,73 +273,36 @@ fn build_ui(app: &adw::Application) {
     let sidebar_toolbar = adw::ToolbarView::new();
     let sidebar_header = adw::HeaderBar::new();
     sidebar_header.set_show_title(true);
+    sidebar_header.set_show_end_title_buttons(false);
 
-    // Primary Menu Button in Sidebar Header (Nautilus / Obelisk Popover Menu)
-    let popover = gtk::Popover::builder()
-        .autohide(true)
-        .has_arrow(true)
-        .build();
-
-    let menu_box = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .css_classes(["menu-box"])
-        .width_request(210)
-        .spacing(2)
-        .build();
-
-    fn build_menu_item(title: &str, icon_name: &str) -> gtk::Button {
-        let btn = gtk::Button::builder()
-            .has_frame(false)
-            .css_classes(["flat", "menu-btn"])
-            .build();
-        let hbox = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .spacing(12)
-            .build();
-        let icon = gtk::Image::builder()
-            .icon_name(icon_name)
-            .pixel_size(16)
-            .build();
-        let label = gtk::Label::builder()
-            .label(title)
-            .halign(gtk::Align::Start)
-            .hexpand(true)
-            .build();
-        hbox.append(&icon);
-        hbox.append(&label);
-        btn.set_child(Some(&hbox));
-        btn
-    }
-
-    let restart_btn = build_menu_item("Restart Daemons", "view-refresh-symbolic");
-    let sep = gtk::Separator::new(gtk::Orientation::Horizontal);
-    sep.add_css_class("menu-separator");
-    let about_btn = build_menu_item("About Chromecast Remote", "help-about-symbolic");
-
-    menu_box.append(&restart_btn);
-    menu_box.append(&sep);
-    menu_box.append(&about_btn);
-    popover.set_child(Some(&menu_box));
+    // Primary Menu in Sidebar Header (GNOME Standard PopoverMenu, no icons, zero CSS)
+    let menu = gtk::gio::Menu::new();
+    menu.append(Some("Restart Daemons"), Some("win.restart_daemons"));
+    let section = gtk::gio::Menu::new();
+    section.append(Some("About Chromecast Remote"), Some("win.about"));
+    menu.append_section(None, &section);
 
     let menu_btn = gtk::MenuButton::builder()
         .icon_name("open-menu-symbolic")
-        .popover(&popover)
+        .menu_model(&menu)
+        .primary(true)
+        .tooltip_text("Options")
         .build();
     sidebar_header.pack_end(&menu_btn);
     sidebar_toolbar.add_top_bar(&sidebar_header);
 
-    let popover_c = popover.clone();
+    // Window Actions for Menu
     let toast_c = toast_overlay.clone();
-    restart_btn.connect_clicked(move |_| {
-        popover_c.popdown();
+    let act_restart = gtk::gio::SimpleAction::new("restart_daemons", None);
+    act_restart.connect_activate(move |_, _| {
         restart_all_services();
         toast_c.add_toast(adw::Toast::new("Restarting background daemons..."));
     });
+    window.add_action(&act_restart);
 
-    let popover_c2 = popover.clone();
     let win_ref_about = window.clone();
-    about_btn.connect_clicked(move |_| {
-        popover_c2.popdown();
+    let act_about = gtk::gio::SimpleAction::new("about", None);
+    act_about.connect_activate(move |_, _| {
         let about = adw::AboutDialog::builder()
             .application_name("Chromecast Remote Settings")
             .developer_name("magnotec")
@@ -371,6 +312,7 @@ fn build_ui(app: &adw::Application) {
             .build();
         about.present(Some(&win_ref_about));
     });
+    window.add_action(&act_about);
 
     // Sidebar ListBox (Nautilus style from Obelisk Launcher)
     let nav_list = gtk::ListBox::new();
@@ -385,8 +327,8 @@ fn build_ui(app: &adw::Application) {
             .spacing(12)
             .margin_start(6)
             .margin_end(6)
-            .margin_top(10)
-            .margin_bottom(10)
+            .margin_top(12)
+            .margin_bottom(12)
             .build();
 
         let icon = gtk::Image::builder()
@@ -422,6 +364,8 @@ fn build_ui(app: &adw::Application) {
     let sidebar_scroll = gtk::ScrolledWindow::new();
     sidebar_scroll.set_child(Some(&nav_list));
     sidebar_scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    sidebar_scroll.set_vexpand(true);
+    sidebar_scroll.set_propagate_natural_width(true);
     sidebar_toolbar.set_content(Some(&sidebar_scroll));
 
     let sidebar_page = adw::NavigationPage::new(&sidebar_toolbar, "Chromecast");
@@ -430,6 +374,7 @@ fn build_ui(app: &adw::Application) {
     // Content:
     let content_toolbar = adw::ToolbarView::new();
     let content_header = adw::HeaderBar::new();
+    content_header.set_show_start_title_buttons(false);
 
     // Clean "Save" Button (Text only, no icon)
     let save_btn = gtk::Button::builder()
