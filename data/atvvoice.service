@@ -1,0 +1,13 @@
+[Unit]
+Description=ATVVoice - Chromecast Remote BLE Microphone Daemon
+After=pipewire.service wireplumber.service bluetooth.target
+Wants=pipewire.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/pilot/pilot-atvvoice
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Pilot - Chromecast Remote & Voice Control CLI Utility
+# ==============================================================================
+set -euo pipefail
+
+BOLD="\033[1m"
+GREEN="\033[1;32m"
+BLUE="\033[1;34m"
+YELLOW="\033[1;33m"
+RED="\033[1;31m"
+CYAN="\033[1;36m"
+DIM="\033[2m"
+RESET="\033[0m"
+
+SERVICES=("pilot-remote.service" "pilot-voice.service" "atvvoice.service")
+
+print_banner() {
+    echo -e "${BLUE}${BOLD}=== Pilot - Chromecast Remote & Voice Management ===${RESET}"
+}
+
+resolve_unit_name() {
+    case "${1:-all}" in
+        remote|pilot-remote|chromecast-remote) echo "pilot-remote.service" ;;
+        voice|pilot-voice|chromecast-voice)   echo "pilot-voice.service" ;;
+        atv|atvvoice)                         echo "atvvoice.service" ;;
+        all)                                  echo "all" ;;
+        *)                                    echo "$1" ;;
+    esac
+}
+
+get_config_file() {
+    if [ -n "${PILOT_CONFIG:-}" ] && [ -f "$PILOT_CONFIG" ]; then
+        echo "$PILOT_CONFIG"
+    elif [ -f "$HOME/.config/pilot/config.toml" ]; then
+        echo "$HOME/.config/pilot/config.toml"
+    elif [ -f "$HOME/.config/chromecast-remote/config.toml" ]; then
+        echo "$HOME/.config/chromecast-remote/config.toml"
+    elif [ -f "/usr/share/pilot/config.toml" ]; then
+        echo "/usr/share/pilot/config.toml"
+    else
+        echo "$HOME/.config/pilot/config.toml"
+    fi
+}
+
+is_service_active() {
+    local s="$1"
+    if systemctl --user is-active --quiet "$s"; then
+        return 0
+    fi
+    # Check legacy name if applicable
+    if [[ "$s" == "pilot-"* ]]; then
+        local legacy="${s/pilot-/chromecast-}"
+        systemctl --user is-active --quiet "$legacy"
+        return $?
+    fi
+    return 1
+}
+
+cmd_status() {
+    print_banner
+    echo -e "${BOLD}Service Status:${RESET}"
+    for s in "${SERVICES[@]}"; do
+        if is_service_active "$s"; then
+            pid=$(systemctl --user show --property MainPID --value "$s" 2>/dev/null || echo "?")
+            echo -e "  ${GREEN}●${RESET} ${BOLD}$s${RESET}: ${GREEN}Active${RESET} (PID: $pid)"
+        else
+            echo -e "  ${RED}○${RESET} ${BOLD}$s${RESET}: ${RED}Inactive${RESET}"
+        fi
+    done
+
+    echo -e "\n${BOLD}Hardware & Bluetooth:${RESET}"
+    if command -v bluetoothctl >/dev/null 2>&1; then
+        dev_info=$(bluetoothctl devices 2>/dev/null | grep -i "Chromecast Remote" | head -n1 || true)
+        if [ -n "$dev_info" ]; then
+            mac=$(echo "$dev_info" | awk '{print $2}')
+            name=$(echo "$dev_info" | cut -d' ' -f3-)
+            if bluetoothctl info "$mac" 2>/dev/null | grep -q "Connected: yes"; then
+                echo -e "  ${GREEN}●${RESET} $name ($mac): ${GREEN}Connected${RESET}"
+            else
+                echo -e "  ${YELLOW}○${RESET} $name ($mac): ${YELLOW}Disconnected / Sleeping${RESET}"
+            fi
+        else
+            echo -e "  ${YELLOW}!${RESET} No paired 'Chromecast Remote' found in bluetoothctl"
+        fi
+    fi
+
+    echo -e "\n${BOLD}Permissions & Configuration:${RESET}"
+    if [ -w /dev/uinput ]; then
+        echo -e "  ${GREEN}✓${RESET} /dev/uinput: Read/Write Access Available"
+    else
+        echo -e "  ${RED}✗${RESET} /dev/uinput: Permission Denied"
+    fi
+
+    cfg=$(get_config_file)
+    if [ -f "$cfg" ]; then
+        echo -e "  ${GREEN}✓${RESET} Config File: $cfg"
+    else
+        echo -e "  ${YELLOW}!${RESET} Config File: not found (will be created on first launch)"
+    fi
+}
+
+cmd_start() {
+    target="$(resolve_unit_name "${1:-all}")"
+    if [ "$target" = "all" ]; then
+        echo -e "${CYAN}Starting Pilot services...${RESET}"
+        systemctl --user start "${SERVICES[@]}"
+    else
+        echo -e "${CYAN}Starting $target...${RESET}"
+        systemctl --user start "$target"
+    fi
+    cmd_status
+}
+
+cmd_stop() {
+    target="$(resolve_unit_name "${1:-all}")"
+    if [ "$target" = "all" ]; then
+        echo -e "${YELLOW}Stopping Pilot services...${RESET}"
+        systemctl --user stop "${SERVICES[@]}" "chromecast-remote.service" "chromecast-voice.service" 2>/dev/null || true
+    else
+        echo -e "${YELLOW}Stopping $target...${RESET}"
+        systemctl --user stop "$target"
+    fi
+    cmd_status
+}
+
+cmd_restart() {
+    target="$(resolve_unit_name "${1:-all}")"
+    if [ "$target" = "all" ]; then
+        echo -e "${CYAN}Restarting Pilot services...${RESET}"
+        systemctl --user restart "${SERVICES[@]}"
+    else
+        echo -e "${CYAN}Restarting $target...${RESET}"
+        systemctl --user restart "$target"
+    fi
+    cmd_status
+}
+
+cmd_logs() {
+    target="$(resolve_unit_name "${1:-all}")"
+    if [ "$target" = "all" ]; then
+        echo -e "${CYAN}Streaming logs for all services (Ctrl+C to stop)...${RESET}"
+        journalctl --user -f -u pilot-remote.service -u chromecast-remote.service -u pilot-voice.service -u chromecast-voice.service -u atvvoice.service
+    else
+        echo -e "${CYAN}Streaming logs for $target (Ctrl+C to stop)...${RESET}"
+        journalctl --user -f -u "$target"
+    fi
+}
+
+cmd_doctor() {
+    print_banner
+    echo -e "${BOLD}Running System Diagnostics...${RESET}\n"
+    
+    echo -n "Checking /dev/uinput write permission: "
+    if [ -w /dev/uinput ]; then
+        echo -e "${GREEN}PASS${RESET}"
+    else
+        echo -e "${RED}FAIL${RESET} (Requires udev rule or membership in 'input' group)"
+    fi
+
+    echo -n "Checking Python 3 evdev module: "
+    if python3 -c "import evdev" 2>/dev/null; then
+        echo -e "${GREEN}PASS${RESET}"
+    else
+        echo -e "${RED}FAIL${RESET} (Install python3-evdev)"
+    fi
+
+    echo -n "Checking PipeWire daemon: "
+    if systemctl --user is-active --quiet pipewire.service 2>/dev/null; then
+        echo -e "${GREEN}PASS${RESET}"
+    else
+        echo -e "${YELLOW}WARN${RESET} (PipeWire user service not active)"
+    fi
+
+    echo -n "Checking Bluetooth service: "
+    if systemctl is-active --quiet bluetooth.service 2>/dev/null; then
+        echo -e "${GREEN}PASS${RESET}"
+    else
+        echo -e "${YELLOW}WARN${RESET} (Bluetooth service not active)"
+    fi
+
+    echo ""
+    cmd_status
+}
+
+case "${1:-status}" in
+    status)   cmd_status ;;
+    start)    cmd_start "${2:-all}" ;;
+    stop)     cmd_stop "${2:-all}" ;;
+    restart)  cmd_restart "${2:-all}" ;;
+    logs)     cmd_logs "${2:-all}" ;;
+    doctor)   cmd_doctor ;;
+    config)   echo "$(get_config_file)" ;;
+    help|--help|-h)
+        print_banner
+        echo "Usage: pilot-ctl [status|start|stop|restart|logs|doctor|config]"
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Usage: pilot-ctl [status|start|stop|restart|logs|doctor|config]"
+        exit 1
+        ;;
+esac

@@ -44,28 +44,42 @@ It pairs low-latency background input and speech daemons with a native Libadwait
   - Emulates an accelerated virtual mouse pointer with configurable base speed, maximum speed, exponential curves, and scroll steps.
 - **Whisper Voice Dictation**:
   - Hold the Assistant button to stream speech directly into local faster-whisper inference (with CUDA GPU acceleration or CPU) and auto-type into the active window.
+- **GNOME Background Apps Integration**:
+  - Closing the settings window keeps Pilot active in the GNOME 44+ Quick Settings "Background Apps" drawer.
+  - Clicking the **`X`** in Background Apps terminates Pilot and cleanly shuts down all background workers in one click.
 - **Sleep & Wake Resilient**:
   - Automatically reconnects and re-grabs the remote whenever Bluetooth connects, disconnects, or wakes from suspend.
 - **Interactive Libadwaita GUI**:
   - Visual remote simulator providing live feedback as you press physical buttons, with direct per-layer configuration.
 
-## Quick Start
+## Installation
 
-Install or update the system:
+### Fedora / RHEL RPM Package (Recommended)
+Build and install Pilot as a native tracked RPM package:
+```bash
+just rpm-install
+# or manually:
+just rpm
+sudo dnf install dist/pilot-*.rpm
+```
+
+### Local User Install
 ```bash
 just install
 ```
 
+## Quick Start
+
 Launch the Settings GUI:
 ```bash
-just run
-# or
 pilot
+# or via command runner
+just run
 ```
 
-Check system status (services, Bluetooth connectivity, permissions):
+Inspect services, Bluetooth pairing, and `/dev/uinput` permissions:
 ```bash
-just status
+pilot-ctl status
 ```
 
 For full setup instructions, see the [Installation Guide](docs/INSTALL.md).

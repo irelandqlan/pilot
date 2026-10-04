@@ -1,0 +1,308 @@
+use std::path::PathBuf;
+use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+#[derive(Clone, Default)]
+pub struct WorkerSupervisor {
+    remote_child: Arc<Mutex<Option<Child>>>,
+    voice_child: Arc<Mutex<Option<Child>>>,
+    atv_child: Arc<Mutex<Option<Child>>>,
+}
+
+impl WorkerSupervisor {
+    pub fn new() -> Self {
+        Self {
+            remote_child: Arc::new(Mutex::new(None)),
+            voice_child: Arc::new(Mutex::new(None)),
+            atv_child: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn find_python() -> PathBuf {
+        let home = glib_home_dir();
+        let candidates = [
+            home.join(".local/share/pilot/venv/bin/python3"),
+            home.join(".local/share/chromecast-remote/venv/bin/python3"),
+            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/venv/bin/python3")),
+            PathBuf::from("/usr/bin/python3"),
+        ];
+        for p in candidates {
+            if p.exists() {
+                return p;
+            }
+        }
+        PathBuf::from("python3")
+    }
+
+    pub fn find_script(script_name: &str) -> Option<PathBuf> {
+        let home = glib_home_dir();
+        let candidates = [
+            PathBuf::from("/usr/libexec/pilot").join(script_name),
+            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"))).join(script_name),
+            home.join(".local/share/pilot").join(script_name),
+            home.join(".local/share/chromecast-remote").join(script_name),
+        ];
+        for p in candidates {
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    pub fn find_atvvoice() -> Option<PathBuf> {
+        let home = glib_home_dir();
+        let candidates = [
+            PathBuf::from("/usr/libexec/pilot/pilot-atvvoice"),
+            PathBuf::from("/usr/libexec/pilot/atvvoice"),
+            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/pilot-atvvoice")),
+            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/atvvoice")),
+            home.join(".local/share/chromecast-remote/bin/atvvoice"),
+        ];
+        for p in candidates {
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    // --- Remote Controller Worker ---
+
+    pub fn is_remote_running(&self) -> bool {
+        let mut lock = self.remote_child.lock().unwrap();
+        if check_child_running(&mut lock) {
+            return true;
+        }
+        // Fallback check if running via systemd unit
+        is_systemd_unit_active("pilot-remote.service")
+            || is_systemd_unit_active("chromecast-remote.service")
+    }
+
+    pub fn start_remote(&self) -> bool {
+        let mut lock = self.remote_child.lock().unwrap();
+        if check_child_running(&mut lock) {
+            return true;
+        }
+
+        // Stop legacy systemd unit to avoid EVIOCGRAB conflict
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "pilot-remote.service", "chromecast-remote.service"])
+            .status();
+
+        let python = Self::find_python();
+        let script = match Self::find_script("remote_daemon.py") {
+            Some(s) => s,
+            None => {
+                eprintln!("[Supervisor] remote_daemon.py not found");
+                return false;
+            }
+        };
+
+        eprintln!("[Supervisor] Spawning remote daemon: {:?} {:?}", python, script);
+        match Command::new(&python)
+            .arg(&script)
+            .env("PYTHONUNBUFFERED", "1")
+            .spawn()
+        {
+            Ok(child) => {
+                *lock = Some(child);
+                true
+            }
+            Err(e) => {
+                eprintln!("[Supervisor] Failed to spawn remote daemon: {}", e);
+                false
+            }
+        }
+    }
+
+    pub fn stop_remote(&self) {
+        let mut lock = self.remote_child.lock().unwrap();
+        stop_child(&mut lock);
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "pilot-remote.service", "chromecast-remote.service"])
+            .status();
+    }
+
+    // --- Voice Dictation Worker ---
+
+    pub fn is_voice_running(&self) -> bool {
+        let mut lock = self.voice_child.lock().unwrap();
+        if check_child_running(&mut lock) {
+            return true;
+        }
+        is_systemd_unit_active("pilot-voice.service")
+            || is_systemd_unit_active("chromecast-voice.service")
+    }
+
+    pub fn start_voice(&self) -> bool {
+        let mut lock = self.voice_child.lock().unwrap();
+        if check_child_running(&mut lock) {
+            return true;
+        }
+
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "pilot-voice.service", "chromecast-voice.service"])
+            .status();
+
+        let python = Self::find_python();
+        let script = match Self::find_script("voice_daemon.py") {
+            Some(s) => s,
+            None => {
+                eprintln!("[Supervisor] voice_daemon.py not found");
+                return false;
+            }
+        };
+
+        eprintln!("[Supervisor] Spawning voice daemon: {:?} {:?}", python, script);
+        match Command::new(&python)
+            .arg(&script)
+            .env("PYTHONUNBUFFERED", "1")
+            .spawn()
+        {
+            Ok(child) => {
+                *lock = Some(child);
+                true
+            }
+            Err(e) => {
+                eprintln!("[Supervisor] Failed to spawn voice daemon: {}", e);
+                false
+            }
+        }
+    }
+
+    pub fn stop_voice(&self) {
+        let mut lock = self.voice_child.lock().unwrap();
+        stop_child(&mut lock);
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "pilot-voice.service", "chromecast-voice.service"])
+            .status();
+    }
+
+    // --- ATVVoice BLE Audio Worker ---
+
+    pub fn is_atv_running(&self) -> bool {
+        let mut lock = self.atv_child.lock().unwrap();
+        if check_child_running(&mut lock) {
+            return true;
+        }
+        is_systemd_unit_active("atvvoice.service")
+    }
+
+    pub fn start_atv(&self) -> bool {
+        let mut lock = self.atv_child.lock().unwrap();
+        if check_child_running(&mut lock) {
+            return true;
+        }
+
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "atvvoice.service"])
+            .status();
+
+        let bin = match Self::find_atvvoice() {
+            Some(b) => b,
+            None => {
+                eprintln!("[Supervisor] atvvoice binary not found");
+                return false;
+            }
+        };
+
+        eprintln!("[Supervisor] Spawning atvvoice: {:?}", bin);
+        match Command::new(&bin).spawn() {
+            Ok(child) => {
+                *lock = Some(child);
+                true
+            }
+            Err(e) => {
+                eprintln!("[Supervisor] Failed to spawn atvvoice: {}", e);
+                false
+            }
+        }
+    }
+
+    pub fn stop_atv(&self) {
+        let mut lock = self.atv_child.lock().unwrap();
+        stop_child(&mut lock);
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", "atvvoice.service"])
+            .status();
+    }
+
+    // --- Global Controls ---
+
+    pub fn start_all(&self, remote_enabled: bool, voice_enabled: bool) {
+        if remote_enabled {
+            self.start_remote();
+        }
+        if voice_enabled {
+            self.start_voice();
+            self.start_atv();
+        }
+    }
+
+    pub fn stop_all(&self) {
+        eprintln!("[Supervisor] Shutting down all Pilot workers...");
+        self.stop_remote();
+        self.stop_voice();
+        self.stop_atv();
+    }
+
+    pub fn restart_all(&self, remote_enabled: bool, voice_enabled: bool) {
+        self.stop_all();
+        std::thread::sleep(Duration::from_millis(200));
+        self.start_all(remote_enabled, voice_enabled);
+    }
+}
+
+impl Drop for WorkerSupervisor {
+    fn drop(&mut self) {
+        self.stop_all();
+    }
+}
+
+// --- Internal Helpers ---
+
+fn glib_home_dir() -> PathBuf {
+    gtk::glib::home_dir()
+}
+
+fn check_child_running(child_opt: &mut Option<Child>) -> bool {
+    if let Some(ref mut child) = child_opt {
+        match child.try_wait() {
+            Ok(Some(_status)) => {
+                *child_opt = None;
+                false
+            }
+            Ok(None) => true,
+            Err(_) => {
+                *child_opt = None;
+                false
+            }
+        }
+    } else {
+        false
+    }
+}
+
+fn stop_child(child_opt: &mut Option<Child>) {
+    if let Some(mut child) = child_opt.take() {
+        let pid = child.id();
+        let _ = Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+        std::thread::sleep(Duration::from_millis(120));
+        if let Ok(None) = child.try_wait() {
+            let _ = child.kill();
+        }
+        let _ = child.wait();
+    }
+}
+
+fn is_systemd_unit_active(unit_name: &str) -> bool {
+    Command::new("systemctl")
+        .args(["--user", "is-active", "--quiet", unit_name])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}

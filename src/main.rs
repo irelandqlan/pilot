@@ -14,6 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 
+mod supervisor;
+use supervisor::WorkerSupervisor;
+
 fn default_true() -> bool {
     true
 }
@@ -96,7 +99,15 @@ fn get_config_path() -> PathBuf {
 fn load_config() -> Result<AppConfig, String> {
     let path = get_config_path();
     if !path.exists() {
-        return Err(format!("Config file not found at {}", path.display()));
+        let sys_cfg = PathBuf::from("/usr/share/pilot/config.toml");
+        if sys_cfg.exists() {
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::copy(&sys_cfg, &path);
+        } else {
+            return Err(format!("Config file not found at {}", path.display()));
+        }
     }
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
     toml::from_str(&content).map_err(|e| e.to_string())
@@ -111,44 +122,7 @@ fn save_config(config: &AppConfig) -> Result<(), String> {
     fs::write(&path, toml_str).map_err(|e| e.to_string())
 }
 
-fn restart_all_services(remote_enabled: bool) {
-    if remote_enabled {
-        let _ = Command::new("systemctl")
-            .args(["--user", "restart", "chromecast-remote.service"])
-            .spawn();
-    } else {
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "chromecast-remote.service"])
-            .spawn();
-    }
-    let _ = Command::new("systemctl")
-        .args([
-            "--user",
-            "restart",
-            "atvvoice.service",
-            "chromecast-voice.service",
-        ])
-        .spawn();
-}
 
-fn is_service_active(service_name: &str) -> bool {
-    Command::new("systemctl")
-        .args(["--user", "is-active", "--quiet", service_name])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-fn set_service_state(service_name: &str, start: bool) {
-    let action = if start { "start" } else { "stop" };
-    let _ = Command::new("systemctl")
-        .args(["--user", action, service_name])
-        .status();
-    let enable_action = if start { "enable" } else { "disable" };
-    let _ = Command::new("systemctl")
-        .args(["--user", enable_action, service_name])
-        .status();
-}
 
 fn setup_reset_button(
     spin_row: &adw::SpinRow,
@@ -435,21 +409,40 @@ fn main() {
     .expect("Failed to load GResource bundle");
     gtk::gio::resources_register(&resources);
 
+    let supervisor = WorkerSupervisor::new();
+    if let Ok(cfg) = load_config() {
+        supervisor.start_all(cfg.device.enabled, cfg.voice.enabled);
+    }
+
     let app = adw::Application::builder()
         .application_id("io.github.magnotec.Pilot")
         .build();
 
-    app.connect_startup(|_| {
+    let supervisor_shutdown = supervisor.clone();
+    app.connect_shutdown(move |_| {
+        supervisor_shutdown.stop_all();
+    });
+
+    app.connect_startup(|app| {
+        // Retain hold guard so the application stays alive in GNOME Background Apps when windows are closed
+        std::mem::forget(app.hold());
         if let Some(display) = gtk::gdk::Display::default() {
             let theme = gtk::IconTheme::for_display(&display);
             theme.add_resource_path("/io/github/magnotec/Pilot/icons");
-            theme.add_search_path("/home/magnotec/.local/share/chromecast-remote/icons");
-            theme.add_search_path("/home/magnotec/.local/share/icons/hicolor/scalable/actions");
+            theme.add_search_path("/usr/share/icons/hicolor/scalable/actions");
+            theme.add_search_path("/usr/share/pilot/icons");
+            let home = gtk::glib::home_dir();
+            theme.add_search_path(home.join(".local/share/chromecast-remote/icons"));
+            theme.add_search_path(home.join(".local/share/icons/hicolor/scalable/actions"));
         }
         load_custom_css();
     });
 
-    app.connect_activate(build_ui);
+    let supervisor_ui = supervisor.clone();
+    app.connect_activate(move |app| {
+        build_ui(app, &supervisor_ui);
+    });
+
     app.run();
 }
 
@@ -549,7 +542,13 @@ fn load_custom_css() {
     );
 }
 
-fn build_ui(app: &adw::Application) {
+fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
+    for win in app.windows() {
+        win.set_visible(true);
+        win.present();
+        return;
+    }
+
     let config_data = match load_config() {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -569,6 +568,12 @@ fn build_ui(app: &adw::Application) {
         .default_height(720)
         .width_request(365)
         .build();
+
+    // Hide window on close so app stays running in GNOME Background Apps
+    window.connect_close_request(|win| {
+        win.set_visible(false);
+        glib::Propagation::Stop
+    });
 
     let toast_overlay = adw::ToastOverlay::new();
 
@@ -612,6 +617,7 @@ fn build_ui(app: &adw::Application) {
     menu.append(Some("Restart Daemons"), Some("win.restart_daemons"));
     let section = gtk::gio::Menu::new();
     section.append(Some("About Pilot"), Some("win.about"));
+    section.append(Some("Quit Pilot"), Some("win.quit_pilot"));
     menu.append_section(None, &section);
 
     let menu_btn = gtk::MenuButton::builder()
@@ -626,12 +632,22 @@ fn build_ui(app: &adw::Application) {
     // Window Actions for Menu
     let toast_c = toast_overlay.clone();
     let cfg_restart_c = config.clone();
+    let sup_restart_c = supervisor.clone();
     let act_restart = gtk::gio::SimpleAction::new("restart_daemons", None);
     act_restart.connect_activate(move |_, _| {
-        restart_all_services(cfg_restart_c.borrow().device.enabled);
+        let cfg = cfg_restart_c.borrow();
+        sup_restart_c.restart_all(cfg.device.enabled, cfg.voice.enabled);
         toast_c.add_toast(adw::Toast::new("Restarting background daemons..."));
     });
     window.add_action(&act_restart);
+
+    let act_quit = gtk::gio::SimpleAction::new("quit_pilot", None);
+    let app_quit = app.clone();
+    act_quit.connect_activate(move |_, _| {
+        app_quit.quit();
+    });
+    window.add_action(&act_quit);
+    app.set_accels_for_action("win.quit_pilot", &["<Control>q"]);
 
     let win_ref_about = window.clone();
     let act_about = gtk::gio::SimpleAction::new("about", None);
@@ -781,7 +797,8 @@ fn build_ui(app: &adw::Application) {
         title: &str,
         desc: &str,
         icon_name: &str,
-        service_name: &'static str,
+        is_active_fn: Rc<dyn Fn() -> bool>,
+        set_active_fn: Rc<dyn Fn(bool)>,
     ) -> (adw::ActionRow, Rc<dyn Fn()>) {
         let row = adw::ActionRow::builder()
             .title(title)
@@ -803,8 +820,9 @@ fn build_ui(app: &adw::Application) {
 
         let s_label_c = status_label.clone();
         let t_btn_c = toggle_btn.clone();
+        let is_act_c = is_active_fn.clone();
         let update_status = Rc::new(move || {
-            let active = is_service_active(service_name);
+            let active = is_act_c();
             s_label_c.set_text(if active { "Running" } else { "Stopped" });
             t_btn_c.set_icon_name(if active {
                 "media-playback-pause-symbolic"
@@ -824,8 +842,10 @@ fn build_ui(app: &adw::Application) {
             let btn_c = toggle_btn.clone();
             let u_c = update_status.clone();
             let s_label_c2 = status_label.clone();
+            let is_act = is_active_fn.clone();
+            let set_act = set_active_fn.clone();
             move |_| {
-                let active = is_service_active(service_name);
+                let active = is_act();
                 let new_state = !active;
 
                 let spinner = gtk::Spinner::new();
@@ -834,7 +854,7 @@ fn build_ui(app: &adw::Application) {
                 btn_c.set_sensitive(false);
                 s_label_c2.set_text(if new_state { "Starting..." } else { "Stopping..." });
 
-                set_service_state(service_name, new_state);
+                set_act(new_state);
 
                 let btn_restore = btn_c.clone();
                 let u_restore = u_c.clone();
@@ -849,26 +869,56 @@ fn build_ui(app: &adw::Application) {
         (row, update_status)
     }
 
+    let sup_remote = supervisor.clone();
+    let sup_remote_set = supervisor.clone();
     let (row_remote, update_remote) = create_daemon_row(
         "Remote Controller Daemon",
         "Translates Bluetooth inputs into mouse moves and virtual keys",
         "input-gaming-symbolic",
-        "chromecast-remote.service",
+        Rc::new(move || sup_remote.is_remote_running()),
+        Rc::new(move |start| {
+            if start {
+                sup_remote_set.start_remote();
+            } else {
+                sup_remote_set.stop_remote();
+            }
+        }),
     );
+
+    let sup_voice = supervisor.clone();
+    let sup_voice_set = supervisor.clone();
     let (row_voice, update_voice) = create_daemon_row(
         "Voice Typing Daemon",
         "Runs GPU/CPU Whisper speech-to-text service on session D-Bus",
         "audio-input-microphone-symbolic",
-        "chromecast-voice.service",
+        Rc::new(move || sup_voice.is_voice_running()),
+        Rc::new(move |start| {
+            if start {
+                sup_voice_set.start_voice();
+            } else {
+                sup_voice_set.stop_voice();
+            }
+        }),
     );
+
+    let sup_atv = supervisor.clone();
+    let sup_atv_set = supervisor.clone();
     let (row_atv, update_atv) = create_daemon_row(
         "BLE Microphone (atvvoice)",
         "Streams remote microphone audio packets into PipeWire",
         "bluetooth-symbolic",
-        "atvvoice.service",
+        Rc::new(move || sup_atv.is_atv_running()),
+        Rc::new(move |start| {
+            if start {
+                sup_atv_set.start_atv();
+            } else {
+                sup_atv_set.stop_atv();
+            }
+        }),
     );
 
     // Switch master toggle event
+    let sup_sw = supervisor.clone();
     switch_master.connect_active_notify({
         let cfg = config.clone();
         let chk = check_changes.clone();
@@ -876,7 +926,11 @@ fn build_ui(app: &adw::Application) {
         move |sw| {
             let is_on = sw.is_active();
             cfg.borrow_mut().device.enabled = is_on;
-            set_service_state("chromecast-remote.service", is_on);
+            if is_on {
+                sup_sw.start_remote();
+            } else {
+                sup_sw.stop_remote();
+            }
             chk();
             let u = u_remote.clone();
             glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
@@ -2333,6 +2387,7 @@ fn build_ui(app: &adw::Application) {
     let u_remote_save = update_remote.clone();
     let u_voice_save = update_voice.clone();
     let u_atv_save = update_atv.clone();
+    let sup_save = supervisor.clone();
 
     let perform_save = Rc::new(move || {
         let Some(overlay) = overlay_weak.upgrade() else { return };
@@ -2342,7 +2397,7 @@ fn build_ui(app: &adw::Application) {
             Ok(_) => {
                 *saved_config_clone.borrow_mut() = cfg.clone();
                 check_changes_clone();
-                restart_all_services(cfg.device.enabled);
+                sup_save.restart_all(cfg.device.enabled, cfg.voice.enabled);
                 let toast = adw::Toast::new("Configuration saved and services restarted");
                 toast.set_timeout(3);
                 overlay.add_toast(toast);

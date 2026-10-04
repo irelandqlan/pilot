@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# pilot-atvvoice: Helper wrapper to launch ATVVoice with Chromecast Remote MAC
+# ==============================================================================
+set -euo pipefail
+
+# 1. Determine binary location
+if [ -x "/usr/libexec/pilot/atvvoice" ]; then
+    ATVVOICE_BIN="/usr/libexec/pilot/atvvoice"
+elif [ -x "$HOME/.local/share/chromecast-remote/bin/atvvoice" ]; then
+    ATVVOICE_BIN="$HOME/.local/share/chromecast-remote/bin/atvvoice"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+    ATVVOICE_BIN="$SCRIPT_DIR/atvvoice"
+fi
+
+if [ ! -x "$ATVVOICE_BIN" ]; then
+    echo "Error: atvvoice binary not found or not executable." >&2
+    exit 1
+fi
+
+# 2. Try to discover Bluetooth MAC for Chromecast Remote
+MAC=""
+if command -v bluetoothctl >/dev/null 2>&1; then
+    MAC=$(bluetoothctl devices 2>/dev/null | grep -i "Chromecast Remote" | awk '{print $2}' | head -n1 || true)
+fi
+
+# 3. Fallback MAC if not found dynamically
+if [ -z "$MAC" ]; then
+    MAC="6C:B2:FD:DA:8B:4C"
+fi
+
+echo "Starting ATVVoice with remote MAC: $MAC"
+exec "$ATVVOICE_BIN" -d "$MAC" --frame-timeout 0 -g 10 "$@"

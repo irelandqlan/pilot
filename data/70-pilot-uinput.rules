@@ -1,0 +1,2 @@
+# Pilot - Udev rule to allow active desktop session users access to /dev/uinput
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

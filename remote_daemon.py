@@ -40,6 +40,15 @@ def get_config_path() -> Path:
     dev_cfg = Path(__file__).parent / "config.toml"
     if dev_cfg.exists():
         return dev_cfg
+    sys_cfg = Path("/usr/share/pilot/config.toml")
+    if sys_cfg.exists():
+        try:
+            pilot_cfg.parent.mkdir(parents=True, exist_ok=True)
+            import shutil
+            shutil.copy(sys_cfg, pilot_cfg)
+            return pilot_cfg
+        except Exception:
+            return sys_cfg
     return pilot_cfg if (Path.home() / ".config" / "pilot").exists() else user_cfg
 
 CONFIG_FILE = get_config_path()

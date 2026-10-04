@@ -1,0 +1,14 @@
+[Unit]
+Description=Pilot - Chromecast Remote Controller & Voice Dictation
+After=graphical-session.target pipewire.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/pilot
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target

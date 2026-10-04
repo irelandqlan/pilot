@@ -22,5 +22,9 @@
 /repo
 /*.flatpak
 
+# Packaging & Build directories
+/build
+/dist
+
 # Tooling
 /.antigravitycli

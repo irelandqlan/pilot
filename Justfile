@@ -22,6 +22,33 @@ check:
 build-release:
     cargo build --release
 
+# Build Fedora RPM package into dist/
+rpm:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
+    echo "==> Packaging Pilot v${VERSION} RPM..."
+    BUILD_DIR="$(pwd)/build/rpm"
+    rm -rf "${BUILD_DIR}"
+    mkdir -p "${BUILD_DIR}/"{BUILD,RPMS,SOURCES,SPECS,SRPMS} dist
+    TARBALL="${BUILD_DIR}/SOURCES/pilot-${VERSION}.tar.gz"
+    tar --exclude-vcs --exclude="./target" --exclude="./venv" --exclude="./build" --exclude="./dist" --exclude="./models" \
+        --transform "s,^\.,pilot-${VERSION}," -czf "${TARBALL}" .
+    rpmbuild --define "_topdir ${BUILD_DIR}" -ba pilot.spec
+    cp "${BUILD_DIR}/RPMS/"*/*.rpm dist/
+    echo ""
+    echo "✅ Pilot RPM built successfully in dist/:"
+    ls -lh dist/*.rpm
+
+# Install built RPM onto the system
+rpm-install: rpm
+    #!/usr/bin/env bash
+    set -euo pipefail
+    RPM_FILE=$(ls -t dist/pilot-*.rpm | head -n1)
+    echo "==> Installing ${RPM_FILE} via dnf..."
+    sudo dnf install -y --nogpgcheck "${RPM_FILE}"
+    echo "✅ Pilot installed! Launch with 'pilot' or manage with 'pilot-ctl status'."
+
 # ── System Installation & Service Management ────────────────────────────────
 
 # Install Pilot binaries, services, desktop launcher, and icons
