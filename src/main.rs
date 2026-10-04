@@ -1363,29 +1363,39 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
     // Layer Switcher for Buttons tab
     let switcher_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     switcher_box.set_halign(gtk::Align::Center);
-    switcher_box.set_margin_bottom(6);
+    switcher_box.set_margin_bottom(8);
+    switcher_box.set_margin_top(2);
 
-    let mode_stack = gtk::Stack::new();
-    mode_stack.set_transition_type(gtk::StackTransitionType::Crossfade);
     let is_rebuilding = Rc::new(std::cell::Cell::new(false));
 
     let init_modes = get_available_modes(&config.borrow());
-    for m in &init_modes {
-        let dummy = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        mode_stack.add_titled(&dummy, Some(m), &get_mode_title(m));
-    }
+    let init_labels: Vec<String> = init_modes.iter().map(|m| get_mode_title(m)).collect();
+    let init_refs: Vec<&str> = init_labels.iter().map(|s| s.as_str()).collect();
+    let layer_model = gtk::StringList::new(&init_refs);
 
     let start_mode = if init_modes.contains(&config.borrow().general.initial_mode) {
         config.borrow().general.initial_mode.clone()
     } else {
         init_modes[0].clone()
     };
-    mode_stack.set_visible_child_name(&start_mode);
+    let start_sel = init_modes.iter().position(|m| m == &start_mode).unwrap_or(0);
 
-    let mode_seg_switcher = gtk::StackSwitcher::new();
-    mode_seg_switcher.set_stack(Some(&mode_stack));
-    mode_seg_switcher.set_css_classes(&["linked"]);
-    switcher_box.append(&mode_seg_switcher);
+    let layer_icon = gtk::Image::builder()
+        .icon_name("layers-symbolic")
+        .valign(gtk::Align::Center)
+        .css_classes(["dim-label"])
+        .build();
+    switcher_box.append(&layer_icon);
+
+    let layer_dropdown = gtk::DropDown::builder()
+        .model(&layer_model)
+        .selected(start_sel as u32)
+        .enable_search(true)
+        .valign(gtk::Align::Center)
+        .tooltip_text("Active Layer")
+        .build();
+    layer_dropdown.set_size_request(200, -1);
+    switcher_box.append(&layer_dropdown);
 
     // Add Layer Button
     let add_layer_btn = gtk::Button::builder()
@@ -1396,8 +1406,9 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         .build();
     switcher_box.append(&add_layer_btn);
 
-    // Layer options menu (Duplicate / Delete)
+    // Layer options menu (Rename / Duplicate / Delete)
     let layer_menu = gtk::gio::Menu::new();
+    layer_menu.append(Some("Rename Current Layer…"), Some("win.rename_layer"));
     layer_menu.append(Some("Duplicate Current Layer"), Some("win.duplicate_layer"));
     layer_menu.append(Some("Delete Current Layer"), Some("win.delete_layer"));
 
@@ -1753,20 +1764,27 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
 
     update_all_tooltips();
 
-    // Mode switch listener
+    // Mode switch listener from DropDown
     {
         let act_mode_c = active_mode.clone();
+        let cfg_c = config.clone();
         let u_tips = update_all_tooltips.clone();
         let is_reb = is_rebuilding.clone();
-        mode_stack.connect_visible_child_name_notify(move |stk| {
+        layer_dropdown.connect_selected_notify(move |dd| {
             if is_reb.get() {
                 return;
             }
-            if let Some(new_mode) = stk.visible_child_name() {
-                if let Ok(mut lock) = act_mode_c.try_borrow_mut() {
-                    *lock = new_mode.to_string();
+            let sel = dd.selected() as usize;
+            if let Ok(cfg_lock) = cfg_c.try_borrow() {
+                let current_modes = get_available_modes(&cfg_lock);
+                if let Some(target) = current_modes.get(sel) {
+                    let target_clone = target.clone();
+                    drop(cfg_lock);
+                    if let Ok(mut lock) = act_mode_c.try_borrow_mut() {
+                        *lock = target_clone;
+                    }
+                    u_tips();
                 }
-                u_tips();
             }
         });
     }
@@ -1774,8 +1792,8 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
     // Layer rebuild closure
     let rebuild_layers = {
         let cfg_rc = config.clone();
-        let m_stack = mode_stack.clone();
-        let m_switcher = mode_seg_switcher.clone();
+        let l_dropdown = layer_dropdown.clone();
+        let l_model = layer_model.clone();
         let act_mode_rc = active_mode.clone();
         let init_mode_row_c = initial_mode_row.clone();
         let init_model_c = initial_mode_model.clone();
@@ -1784,26 +1802,17 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
 
         Rc::new(move || {
             is_reb.set(true);
-            m_switcher.set_stack(None::<&gtk::Stack>);
-
-            while let Some(child) = m_stack.first_child() {
-                m_stack.remove(&child);
-            }
 
             let modes = get_available_modes(&cfg_rc.borrow());
-            for m in &modes {
-                let dummy = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-                m_stack.add_titled(&dummy, Some(m), &get_mode_title(m));
-            }
-
-            m_switcher.set_stack(Some(&m_stack));
-
             let str_slices: Vec<String> = modes.iter().map(|m| get_mode_title(m)).collect();
             let str_refs: Vec<&str> = str_slices.iter().map(|s| s.as_str()).collect();
+
+            l_model.splice(0, l_model.n_items(), &str_refs);
+
             init_model_c.splice(0, init_model_c.n_items(), &str_refs);
             let cur_init = &cfg_rc.borrow().general.initial_mode;
-            let sel = modes.iter().position(|m| m == cur_init).unwrap_or(0);
-            init_mode_row_c.set_selected(sel as u32);
+            let sel_init = modes.iter().position(|m| m == cur_init).unwrap_or(0);
+            init_mode_row_c.set_selected(sel_init as u32);
 
             let target_mode = {
                 let mut cur_act = act_mode_rc.borrow_mut();
@@ -1813,7 +1822,9 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
                 cur_act.clone()
             };
 
-            m_stack.set_visible_child_name(&target_mode);
+            let sel_target = modes.iter().position(|m| m == &target_mode).unwrap_or(0);
+            l_dropdown.set_selected(sel_target as u32);
+
             is_reb.set(false);
             u_tips();
         })
@@ -1864,6 +1875,11 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
                         raw.to_lowercase().replace(' ', "_")
                     };
 
+                    if cfg_add.borrow().mode.contains_key(&name) {
+                        toast_add.add_toast(adw::Toast::new("A layer with that name already exists"));
+                        return;
+                    }
+
                     cfg_add
                         .borrow_mut()
                         .mode
@@ -1879,6 +1895,81 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         });
     }
 
+    // Rename Layer Window Action
+    {
+        let act_ren = gtk::gio::SimpleAction::new("rename_layer", None);
+        let win_ren = window.clone();
+        let cfg_ren = config.clone();
+        let act_mode_ren = active_mode.clone();
+        let reb_ren = rebuild_layers.clone();
+        let chk_ren = check_changes.clone();
+        let toast_ren = toast_overlay.clone();
+
+        act_ren.connect_activate(move |_, _| {
+            let cur = act_mode_ren.borrow().clone();
+            let cur_title = get_mode_title(&cur);
+
+            let entry = gtk::Entry::builder()
+                .placeholder_text("New layer name")
+                .text(&cur_title)
+                .margin_start(12)
+                .margin_end(12)
+                .margin_top(8)
+                .margin_bottom(8)
+                .build();
+
+            let dialog = adw::AlertDialog::builder()
+                .heading("Rename Layer")
+                .body(format!("Enter a new name for '{}':", cur_title))
+                .extra_child(&entry)
+                .build();
+            dialog.add_response("cancel", "Cancel");
+            dialog.add_response("rename", "Rename");
+            dialog.set_response_appearance("rename", adw::ResponseAppearance::Suggested);
+            dialog.set_default_response(Some("rename"));
+
+            let cfg_c = cfg_ren.clone();
+            let act_c = act_mode_ren.clone();
+            let reb_c = reb_ren.clone();
+            let chk_c = chk_ren.clone();
+            let toast_c = toast_ren.clone();
+            let cur_key = cur.clone();
+            let entry_c = entry.clone();
+
+            dialog.choose(&win_ren, gtk::gio::Cancellable::NONE, move |choice| {
+                if choice == "rename" {
+                    let raw = entry_c.text().trim().to_string();
+                    if raw.is_empty() {
+                        return;
+                    }
+                    let new_key = raw.to_lowercase().replace(' ', "_");
+                    if new_key == cur_key {
+                        return;
+                    }
+
+                    if cfg_c.borrow().mode.contains_key(&new_key) {
+                        toast_c.add_toast(adw::Toast::new("A layer with that name already exists"));
+                        return;
+                    }
+
+                    if let Some(table) = cfg_c.borrow_mut().mode.remove(&cur_key) {
+                        cfg_c.borrow_mut().mode.insert(new_key.clone(), table);
+                    }
+
+                    if cfg_c.borrow().general.initial_mode == cur_key {
+                        cfg_c.borrow_mut().general.initial_mode = new_key.clone();
+                    }
+
+                    *act_c.borrow_mut() = new_key.clone();
+                    reb_c();
+                    chk_c();
+                    toast_c.add_toast(adw::Toast::new(&format!("Renamed to {}", get_mode_title(&new_key))));
+                }
+            });
+        });
+        window.add_action(&act_ren);
+    }
+
     // Duplicate Layer Window Action
     {
         let act_dup = gtk::gio::SimpleAction::new("duplicate_layer", None);
@@ -1890,7 +1981,12 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
 
         act_dup.connect_activate(move |_, _| {
             let cur = act_mode_dup.borrow().clone();
-            let new_key = format!("{}_copy", cur);
+            let mut new_key = format!("{}_copy", cur);
+            let mut counter = 2;
+            while cfg_dup.borrow().mode.contains_key(&new_key) {
+                new_key = format!("{}_copy{}", cur, counter);
+                counter += 1;
+            }
 
             let table = cfg_dup
                 .borrow()
@@ -2622,6 +2718,80 @@ KEY_SELECT = "action:play_pause"
         assert_eq!(cfg.general.initial_mode, "media");
         let (tap, _, _) = get_button_actions(&cfg, "media", "KEY_SELECT");
         assert_eq!(tap, Some("action:play_pause".into()));
+    }
+
+    #[test]
+    fn test_layer_duplication_and_rename() {
+        let mut cfg = AppConfig {
+            device: DeviceConfig {
+                enabled: true,
+                name_pattern: "Chromecast Remote".into(),
+                grab_device: true,
+                reconnect_poll_interval: 1.0,
+            },
+            general: GeneralConfig {
+                initial_mode: "media".into(),
+                long_press_threshold_sec: 0.5,
+                notifications: true,
+                sound_feedback: false,
+            },
+            mouse: MouseConfig {
+                base_speed: 10.0,
+                max_speed: 100.0,
+                acceleration: 1.5,
+                poll_rate_ms: 10,
+                scroll_step: 1,
+            },
+            voice: VoiceConfig {
+                enabled: true,
+                model: "base".into(),
+                paste_method: "clipboard".into(),
+                min_duration_sec: 0.5,
+                auto_spacing: true,
+                device: "cpu".into(),
+                compute_type: "float32".into(),
+            },
+            mode: toml::Table::new(),
+        };
+
+        // Add initial media actions
+        set_button_actions(&mut cfg, "media", "KEY_SELECT", Some("action:play_pause".into()), None, None);
+
+        // Test duplication naming logic
+        let cur = "media";
+        let mut new_key = format!("{}_copy", cur);
+        let mut counter = 2;
+        while cfg.mode.contains_key(&new_key) {
+            new_key = format!("{}_copy{}", cur, counter);
+            counter += 1;
+        }
+        let table = cfg.mode.get(cur).cloned().unwrap_or_else(|| toml::Value::Table(toml::Table::new()));
+        cfg.mode.insert(new_key.clone(), table);
+
+        assert_eq!(new_key, "media_copy");
+        assert!(cfg.mode.contains_key("media_copy"));
+
+        // Second duplication gives media_copy2
+        let mut second_key = format!("{}_copy", cur);
+        let mut counter2 = 2;
+        while cfg.mode.contains_key(&second_key) {
+            second_key = format!("{}_copy{}", cur, counter2);
+            counter2 += 1;
+        }
+        let table2 = cfg.mode.get(cur).cloned().unwrap_or_else(|| toml::Value::Table(toml::Table::new()));
+        cfg.mode.insert(second_key.clone(), table2);
+        assert_eq!(second_key, "media_copy2");
+        assert!(cfg.mode.contains_key("media_copy2"));
+
+        // Test rename logic
+        let rename_source = "media_copy2";
+        let rename_target = "gaming";
+        if let Some(val) = cfg.mode.remove(rename_source) {
+            cfg.mode.insert(rename_target.into(), val);
+        }
+        assert!(!cfg.mode.contains_key("media_copy2"));
+        assert!(cfg.mode.contains_key("gaming"));
+        assert_eq!(get_mode_title("gaming"), "Gaming");
     }
 }
 
