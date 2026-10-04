@@ -238,7 +238,7 @@ pub struct ActionPreset {
 }
 
 pub const ACTION_PRESETS: &[ActionPreset] = &[
-    ActionPreset { name: "Toggle Mode (Media / Mouse)", action_val: "action:toggle_mode" },
+    ActionPreset { name: "Toggle Next Layer", action_val: "action:toggle_mode" },
     ActionPreset { name: "Play / Pause Toggle", action_val: "action:play_pause" },
     ActionPreset { name: "System Volume Up", action_val: "key:KEY_VOLUMEUP" },
     ActionPreset { name: "System Volume Down", action_val: "key:KEY_VOLUMEDOWN" },
@@ -269,6 +269,50 @@ pub const ACTION_PRESETS: &[ActionPreset] = &[
     ActionPreset { name: "Toggle Fullscreen (F11)", action_val: "key:KEY_F11" },
 ];
 
+pub fn get_available_modes(cfg: &AppConfig) -> Vec<String> {
+    let mut modes: Vec<String> = cfg.mode.keys().cloned().collect();
+    if modes.is_empty() {
+        modes = vec!["media".to_string(), "mouse".to_string()];
+    } else {
+        modes.sort_by(|a, b| {
+            match (a.as_str(), b.as_str()) {
+                ("media", "mouse") => std::cmp::Ordering::Less,
+                ("mouse", "media") => std::cmp::Ordering::Greater,
+                ("media", _) => std::cmp::Ordering::Less,
+                (_, "media") => std::cmp::Ordering::Greater,
+                ("mouse", _) => std::cmp::Ordering::Less,
+                (_, "mouse") => std::cmp::Ordering::Greater,
+                _ => a.cmp(b),
+            }
+        });
+    }
+    modes
+}
+
+pub fn get_mode_title(mode_key: &str) -> String {
+    match mode_key {
+        "media" => "Layer 1 (Media)".to_string(),
+        "mouse" => "Layer 2 (Mouse)".to_string(),
+        "layer1" => "Layer 1".to_string(),
+        "layer2" => "Layer 2".to_string(),
+        "layer3" => "Layer 3".to_string(),
+        "layer4" => "Layer 4".to_string(),
+        _ => {
+            let words: Vec<String> = mode_key
+                .split(|c| c == '_' || c == '-')
+                .map(|w| {
+                    let mut c = w.chars();
+                    match c.next() {
+                        None => String::new(),
+                        Some(f) => f.to_uppercase().chain(c).collect(),
+                    }
+                })
+                .collect();
+            words.join(" ")
+        }
+    }
+}
+
 pub fn get_button_actions(
     cfg: &AppConfig,
     mode_name: &str,
@@ -297,6 +341,12 @@ pub fn get_button_actions(
 }
 
 pub fn format_action_label(action_str: &str) -> String {
+    if action_str == "action:toggle_mode" {
+        return "Toggle Next Layer".to_string();
+    }
+    if let Some(target) = action_str.strip_prefix("action:switch_mode:") {
+        return format!("Switch to {}", get_mode_title(target));
+    }
     if let Some(preset) = ACTION_PRESETS.iter().find(|p| p.action_val == action_str) {
         return preset.name.to_string();
     }
@@ -844,20 +894,34 @@ fn build_ui(app: &adw::Application) {
         .title("Remote Behavior")
         .build();
 
+    let initial_modes = get_available_modes(&config.borrow());
+    let initial_labels: Vec<String> = initial_modes.iter().map(|m| get_mode_title(m)).collect();
+    let initial_refs: Vec<&str> = initial_labels.iter().map(|s| s.as_str()).collect();
+    let initial_mode_model = gtk::StringList::new(&initial_refs);
+
+    let cur_init = &config.borrow().general.initial_mode;
+    let initial_sel = initial_modes.iter().position(|m| m == cur_init).unwrap_or(0);
+
     let initial_mode_row = adw::ComboRow::builder()
-        .title("Starting Mode")
-        .subtitle("Select default mode when launching service")
-        .model(&gtk::StringList::new(&["Media Mode", "Mouse Mode"]))
-        .selected(if config.borrow().general.initial_mode == "mouse" { 1 } else { 0 })
+        .title("Starting Layer")
+        .subtitle("Select default active layer when background service starts")
+        .model(&initial_mode_model)
+        .selected(initial_sel as u32)
         .build();
-    initial_mode_row.connect_selected_notify({
+    {
         let cfg = config.clone();
         let chk = check_changes.clone();
-        move |r| {
-            cfg.borrow_mut().general.initial_mode = if r.selected() == 1 { "mouse".into() } else { "media".into() };
-            chk();
-        }
-    });
+        initial_mode_row.connect_selected_notify(move |r| {
+            let sel = r.selected() as usize;
+            let current_modes = get_available_modes(&cfg.borrow());
+            if let Some(target) = current_modes.get(sel) {
+                if cfg.borrow().general.initial_mode != *target {
+                    cfg.borrow_mut().general.initial_mode = target.clone();
+                    chk();
+                }
+            }
+        });
+    }
 
     let long_press_row = adw::SpinRow::with_range(0.1, 2.0, 0.05);
     long_press_row.set_title("Long-Press Duration (sec)");
@@ -1244,25 +1308,55 @@ fn build_ui(app: &adw::Application) {
 
     let group_buttons_main = adw::PreferencesGroup::new();
 
-    // Mode Switcher for Buttons tab (Media vs. Mouse)
-    let switcher_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    // Layer Switcher for Buttons tab
+    let switcher_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     switcher_box.set_halign(gtk::Align::Center);
     switcher_box.set_margin_bottom(6);
 
     let mode_stack = gtk::Stack::new();
     mode_stack.set_transition_type(gtk::StackTransitionType::Crossfade);
-    let dummy_media = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    let dummy_mouse = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    mode_stack.add_titled(&dummy_media, Some("media"), "Media Mode");
-    mode_stack.add_titled(&dummy_mouse, Some("mouse"), "Mouse Mode");
 
-    let initial_is_mouse = config.borrow().general.initial_mode == "mouse";
-    mode_stack.set_visible_child_name(if initial_is_mouse { "mouse" } else { "media" });
+    let init_modes = get_available_modes(&config.borrow());
+    for m in &init_modes {
+        let dummy = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        mode_stack.add_titled(&dummy, Some(m), &get_mode_title(m));
+    }
+
+    let start_mode = if init_modes.contains(&config.borrow().general.initial_mode) {
+        config.borrow().general.initial_mode.clone()
+    } else {
+        init_modes[0].clone()
+    };
+    mode_stack.set_visible_child_name(&start_mode);
 
     let mode_seg_switcher = gtk::StackSwitcher::new();
     mode_seg_switcher.set_stack(Some(&mode_stack));
     mode_seg_switcher.set_css_classes(&["linked"]);
     switcher_box.append(&mode_seg_switcher);
+
+    // Add Layer Button
+    let add_layer_btn = gtk::Button::builder()
+        .icon_name("list-add-symbolic")
+        .tooltip_text("Add Layer")
+        .css_classes(["flat", "circular"])
+        .valign(gtk::Align::Center)
+        .build();
+    switcher_box.append(&add_layer_btn);
+
+    // Layer options menu (Duplicate / Delete)
+    let layer_menu = gtk::gio::Menu::new();
+    layer_menu.append(Some("Duplicate Current Layer"), Some("win.duplicate_layer"));
+    layer_menu.append(Some("Delete Current Layer"), Some("win.delete_layer"));
+
+    let layer_menu_btn = gtk::MenuButton::builder()
+        .icon_name("view-more-symbolic")
+        .menu_model(&layer_menu)
+        .tooltip_text("Layer Options")
+        .css_classes(["flat", "circular"])
+        .valign(gtk::Align::Center)
+        .build();
+    switcher_box.append(&layer_menu_btn);
+
     group_buttons_main.add(&switcher_box);
 
     // Card Container for Simulated Remote
@@ -1557,9 +1651,7 @@ fn build_ui(app: &adw::Application) {
     page_buttons.add(&group_buttons_main);
 
     // Track active mode in buttons tab
-    let active_mode = Rc::new(RefCell::new(
-        if initial_is_mouse { "mouse".to_string() } else { "media".to_string() }
-    ));
+    let active_mode = Rc::new(RefCell::new(start_mode.clone()));
 
     // Dynamic Tooltip Updater for all buttons
     let update_all_tooltips = {
@@ -1585,11 +1677,11 @@ fn build_ui(app: &adw::Application) {
         Rc::new(move || {
             let mode = act_mode_rc.borrow().clone();
             let cfg = cfg_rc.borrow();
-            let mode_label = if mode == "mouse" { "Mouse Mode" } else { "Media Mode" };
+            let mode_label = get_mode_title(&mode);
 
             for (btn, name, code) in &btns {
                 let (tap, lp, dt) = get_button_actions(&cfg, &mode, code);
-                let mut text = format!("{} ({})\nMode: {}", name, code, mode_label);
+                let mut text = format!("{} ({})\nLayer: {}", name, code, mode_label);
                 if let Some(t) = tap {
                     text.push_str(&format!("\n• Tap: {}", format_action_label(&t)));
                 } else {
@@ -1613,10 +1705,195 @@ fn build_ui(app: &adw::Application) {
         let act_mode_c = active_mode.clone();
         let u_tips = update_all_tooltips.clone();
         mode_stack.connect_visible_child_name_notify(move |stk| {
-            let new_mode = stk.visible_child_name().unwrap_or_else(|| "media".into());
-            *act_mode_c.borrow_mut() = new_mode.to_string();
-            u_tips();
+            if let Some(new_mode) = stk.visible_child_name() {
+                *act_mode_c.borrow_mut() = new_mode.to_string();
+                u_tips();
+            }
         });
+    }
+
+    // Layer rebuild closure
+    let rebuild_layers = {
+        let cfg_rc = config.clone();
+        let m_stack = mode_stack.clone();
+        let act_mode_rc = active_mode.clone();
+        let init_mode_row_c = initial_mode_row.clone();
+        let init_model_c = initial_mode_model.clone();
+        let u_tips = update_all_tooltips.clone();
+
+        Rc::new(move || {
+            while let Some(child) = m_stack.first_child() {
+                m_stack.remove(&child);
+            }
+
+            let modes = get_available_modes(&cfg_rc.borrow());
+            for m in &modes {
+                let dummy = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                m_stack.add_titled(&dummy, Some(m), &get_mode_title(m));
+            }
+
+            let str_slices: Vec<String> = modes.iter().map(|m| get_mode_title(m)).collect();
+            let str_refs: Vec<&str> = str_slices.iter().map(|s| s.as_str()).collect();
+            init_model_c.splice(0, init_model_c.n_items(), &str_refs);
+            let cur_init = &cfg_rc.borrow().general.initial_mode;
+            let sel = modes.iter().position(|m| m == cur_init).unwrap_or(0);
+            init_mode_row_c.set_selected(sel as u32);
+
+            let mut cur_act = act_mode_rc.borrow_mut();
+            if !modes.contains(&*cur_act) {
+                *cur_act = modes[0].clone();
+            }
+            m_stack.set_visible_child_name(&*cur_act);
+            u_tips();
+        })
+    };
+
+    // Add Layer Button Click Handler
+    {
+        let win_c = window.clone();
+        let cfg_c = config.clone();
+        let m_stack_c = mode_stack.clone();
+        let act_mode_c = active_mode.clone();
+        let reb_c = rebuild_layers.clone();
+        let chk_c = check_changes.clone();
+        let toast_c = toast_overlay.clone();
+
+        add_layer_btn.connect_clicked(move |_| {
+            let entry = gtk::Entry::builder()
+                .placeholder_text("Layer name (e.g. Gaming, Presentation)")
+                .margin_start(12)
+                .margin_end(12)
+                .margin_top(8)
+                .margin_bottom(8)
+                .build();
+
+            let dialog = adw::AlertDialog::builder()
+                .heading("Add New Layer")
+                .body("Create a new customizable button mapping layer:")
+                .extra_child(&entry)
+                .build();
+            dialog.add_response("cancel", "Cancel");
+            dialog.add_response("add", "Add Layer");
+            dialog.set_response_appearance("add", adw::ResponseAppearance::Suggested);
+            dialog.set_default_response(Some("add"));
+
+            let cfg_add = cfg_c.clone();
+            let m_stack_add = m_stack_c.clone();
+            let act_mode_add = act_mode_c.clone();
+            let reb_add = reb_c.clone();
+            let chk_add = chk_c.clone();
+            let toast_add = toast_c.clone();
+            let entry_c = entry.clone();
+
+            dialog.choose(&win_c, gtk::gio::Cancellable::NONE, move |choice| {
+                if choice == "add" {
+                    let raw = entry_c.text().trim().to_string();
+                    let modes_len = cfg_add.borrow().mode.len();
+                    let name = if raw.is_empty() {
+                        format!("layer{}", modes_len + 1)
+                    } else {
+                        raw.to_lowercase().replace(' ', "_")
+                    };
+
+                    cfg_add
+                        .borrow_mut()
+                        .mode
+                        .entry(name.clone())
+                        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+
+                    *act_mode_add.borrow_mut() = name.clone();
+                    reb_add();
+                    m_stack_add.set_visible_child_name(&name);
+                    chk_add();
+                    toast_add.add_toast(adw::Toast::new(&format!("Added {}", get_mode_title(&name))));
+                }
+            });
+        });
+    }
+
+    // Duplicate Layer Window Action
+    {
+        let act_dup = gtk::gio::SimpleAction::new("duplicate_layer", None);
+        let cfg_dup = config.clone();
+        let act_mode_dup = active_mode.clone();
+        let m_stack_dup = mode_stack.clone();
+        let reb_dup = rebuild_layers.clone();
+        let chk_dup = check_changes.clone();
+        let toast_dup = toast_overlay.clone();
+
+        act_dup.connect_activate(move |_, _| {
+            let cur = act_mode_dup.borrow().clone();
+            let new_key = format!("{}_copy", cur);
+
+            let table = cfg_dup
+                .borrow()
+                .mode
+                .get(&cur)
+                .cloned()
+                .unwrap_or_else(|| toml::Value::Table(toml::Table::new()));
+
+            cfg_dup.borrow_mut().mode.insert(new_key.clone(), table);
+            *act_mode_dup.borrow_mut() = new_key.clone();
+            reb_dup();
+            m_stack_dup.set_visible_child_name(&new_key);
+            chk_dup();
+            toast_dup.add_toast(adw::Toast::new(&format!("Duplicated into {}", get_mode_title(&new_key))));
+        });
+        window.add_action(&act_dup);
+    }
+
+    // Delete Layer Window Action
+    {
+        let act_del = gtk::gio::SimpleAction::new("delete_layer", None);
+        let win_del = window.clone();
+        let cfg_del = config.clone();
+        let act_mode_del = active_mode.clone();
+        let m_stack_del = mode_stack.clone();
+        let reb_del = rebuild_layers.clone();
+        let chk_del = check_changes.clone();
+        let toast_del = toast_overlay.clone();
+
+        act_del.connect_activate(move |_, _| {
+            let cur = act_mode_del.borrow().clone();
+            let modes = get_available_modes(&cfg_del.borrow());
+            if modes.len() <= 1 {
+                toast_del.add_toast(adw::Toast::new("Cannot delete the only remaining layer"));
+                return;
+            }
+
+            let dialog = adw::AlertDialog::builder()
+                .heading("Delete Layer?")
+                .body(format!(
+                    "Are you sure you want to delete '{}'? All button mappings in this layer will be removed.",
+                    get_mode_title(&cur)
+                ))
+                .build();
+            dialog.add_response("cancel", "Cancel");
+            dialog.add_response("delete", "Delete");
+            dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+            dialog.set_default_response(Some("cancel"));
+
+            let cfg_del_conf = cfg_del.clone();
+            let act_mode_del_conf = act_mode_del.clone();
+            let m_stack_del_conf = m_stack_del.clone();
+            let reb_del_conf = reb_del.clone();
+            let chk_del_conf = chk_del.clone();
+            let toast_del_conf = toast_del.clone();
+            let cur_del = cur.clone();
+
+            dialog.choose(&win_del, gtk::gio::Cancellable::NONE, move |choice| {
+                if choice == "delete" {
+                    cfg_del_conf.borrow_mut().mode.remove(&cur_del);
+                    let remaining = get_available_modes(&cfg_del_conf.borrow());
+                    *act_mode_del_conf.borrow_mut() = remaining[0].clone();
+                    reb_del_conf();
+                    m_stack_del_conf.set_visible_child_name(&remaining[0]);
+                    chk_del_conf();
+                    toast_del_conf.add_toast(adw::Toast::new(&format!("Deleted {}", get_mode_title(&cur_del))));
+                }
+            });
+        });
+        window.add_action(&act_del);
     }
 
     // Function to open direct edit dialog for a specific button
@@ -1629,7 +1906,7 @@ fn build_ui(app: &adw::Application) {
         chk_changes: Rc<dyn Fn()>,
         on_saved: Rc<dyn Fn()>,
     ) {
-        let mode_title = if mode_name == "mouse" { "Mouse Mode" } else { "Media Mode" };
+        let mode_title = get_mode_title(mode_name);
         let dialog = adw::PreferencesDialog::builder()
             .title(format!("{} — {}", btn_def.name, mode_title))
             .build();
@@ -1646,10 +1923,24 @@ fn build_ui(app: &adw::Application) {
         let (cur_tap, cur_lp, cur_dt) =
             get_button_actions(&cfg_ref.borrow(), mode_name, btn_def.key_code);
 
+        let mut preset_items: Vec<(String, String)> = Vec::new();
+        for p in ACTION_PRESETS {
+            preset_items.push((p.name.to_string(), p.action_val.to_string()));
+        }
+        let all_modes = get_available_modes(&cfg_ref.borrow());
+        for m in &all_modes {
+            if m != mode_name {
+                preset_items.push((
+                    format!("Switch to {}", get_mode_title(m)),
+                    format!("action:switch_mode:{}", m),
+                ));
+            }
+        }
+
         let mut preset_labels: Vec<String> = Vec::new();
         preset_labels.push("(None / Unassigned)".to_string());
-        for p in ACTION_PRESETS {
-            preset_labels.push(p.name.to_string());
+        for (name, _) in &preset_items {
+            preset_labels.push(name.clone());
         }
         preset_labels.push("Custom Action / Command...".to_string());
         let custom_idx = (preset_labels.len() - 1) as u32;
@@ -1672,7 +1963,7 @@ fn build_ui(app: &adw::Application) {
             let initial_idx = match &current_val {
                 None => 0,
                 Some(v) => {
-                    if let Some(pos) = ACTION_PRESETS.iter().position(|p| p.action_val == v.as_str()) {
+                    if let Some(pos) = preset_items.iter().position(|(_, val)| val == v.as_str()) {
                         (pos + 1) as u32
                     } else {
                         custom_idx
@@ -1694,6 +1985,7 @@ fn build_ui(app: &adw::Application) {
                 .build();
 
             let entry_c = entry.clone();
+            let items_c = preset_items.clone();
             combo.connect_selected_notify(move |c| {
                 let sel = c.selected();
                 if sel == 0 {
@@ -1704,8 +1996,8 @@ fn build_ui(app: &adw::Application) {
                 } else {
                     entry_c.set_visible(false);
                     let p_idx = (sel - 1) as usize;
-                    if p_idx < ACTION_PRESETS.len() {
-                        entry_c.set_text(ACTION_PRESETS[p_idx].action_val);
+                    if p_idx < items_c.len() {
+                        entry_c.set_text(&items_c[p_idx].1);
                     }
                 }
             });
@@ -1715,6 +2007,7 @@ fn build_ui(app: &adw::Application) {
 
             let combo_c = combo.clone();
             let entry_c2 = entry.clone();
+            let items_c2 = preset_items.clone();
             let get_val = move || -> Option<String> {
                 let sel = combo_c.selected();
                 if sel == 0 {
@@ -1728,11 +2021,7 @@ fn build_ui(app: &adw::Application) {
                     }
                 } else {
                     let p_idx = (sel - 1) as usize;
-                    if p_idx < ACTION_PRESETS.len() {
-                        Some(ACTION_PRESETS[p_idx].action_val.to_string())
-                    } else {
-                        None
-                    }
+                    items_c2.get(p_idx).map(|(_, val)| val.clone())
                 }
             };
 
@@ -2089,6 +2378,14 @@ mod tests {
     #[test]
     fn test_format_action_label() {
         assert_eq!(
+            format_action_label("action:toggle_mode"),
+            "Toggle Next Layer"
+        );
+        assert_eq!(
+            format_action_label("action:switch_mode:mouse"),
+            "Switch to Layer 2 (Mouse)"
+        );
+        assert_eq!(
             format_action_label("action:play_pause"),
             "Play / Pause Toggle"
         );
@@ -2104,6 +2401,56 @@ mod tests {
             format_action_label("mouse:move_up"),
             "Move Pointer Up (Accelerated)"
         );
+    }
+
+    #[test]
+    fn test_layers_available_and_titles() {
+        let mut cfg = AppConfig {
+            device: DeviceConfig {
+                enabled: true,
+                name_pattern: "Chromecast Remote".into(),
+                grab_device: true,
+                reconnect_poll_interval: 1.0,
+            },
+            general: GeneralConfig {
+                initial_mode: "media".into(),
+                long_press_threshold_sec: 0.5,
+                notifications: true,
+                sound_feedback: false,
+            },
+            mouse: MouseConfig {
+                base_speed: 10.0,
+                max_speed: 100.0,
+                acceleration: 1.5,
+                poll_rate_ms: 10,
+                scroll_step: 1,
+            },
+            voice: VoiceConfig {
+                enabled: true,
+                model: "base".into(),
+                paste_method: "clipboard".into(),
+                min_duration_sec: 0.5,
+                auto_spacing: true,
+                device: "cpu".into(),
+                compute_type: "float32".into(),
+            },
+            mode: toml::Table::new(),
+        };
+
+        // When mode table is empty, defaults to media and mouse
+        assert_eq!(get_available_modes(&cfg), vec!["media", "mouse"]);
+        assert_eq!(get_mode_title("media"), "Layer 1 (Media)");
+        assert_eq!(get_mode_title("mouse"), "Layer 2 (Mouse)");
+
+        // Insert custom layers
+        cfg.mode.insert("gaming".into(), toml::Value::Table(toml::Table::new()));
+        cfg.mode.insert("media".into(), toml::Value::Table(toml::Table::new()));
+        cfg.mode.insert("mouse".into(), toml::Value::Table(toml::Table::new()));
+
+        let modes = get_available_modes(&cfg);
+        assert_eq!(modes, vec!["media", "mouse", "gaming"]);
+        assert_eq!(get_mode_title("gaming"), "Gaming");
+        assert_eq!(get_mode_title("layer3"), "Layer 3");
     }
 
     #[test]

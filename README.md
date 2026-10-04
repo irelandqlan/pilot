@@ -35,17 +35,19 @@ It pairs low-latency background input and speech daemons with a native Libadwait
 
 ## Features
 
-- **Dual-Mode Control**:
-  - **Media Mode (Default)**: Volume, media scrub (seek forward/backward), play/pause, fullscreen, YouTube & streaming app launcher.
-  - **Mouse Mode**: D-Pad becomes a smooth virtual mouse pointer with configurable exponential acceleration, tap Center for Left Click, Back for Right Click, side volume buttons for Scroll Wheel.
-- **Instant Mode Switching**: Press the **Input / TV** button to toggle modes anytime.
-- **Whisper Voice Dictation**: Hold the **Assistant (Mic)** button to speak; release to instantly transcribe and type via faster-whisper (CUDA accelerated or CPU).
-- **Bedtime Power Controls**:
-  - **Short Tap Power Button**: Blanks / puts monitors into power-save mode so you can sleep without bright screens.
-  - **Hold Power Button (> 0.7s)**: Suspends PC (`systemctl suspend`).
-- **Sleep & Wake Resilient**: Continuously detects Bluetooth disconnects/reconnects and re-grabs the remote automatically.
-- **Native Settings App**: Modern GNOME Libadwaita UI to configure button bindings, mouse curves, and voice dictation settings.
-- **Live Event Simulation**: Interactive visual remote in the settings app that lights up buttons as you press them on the physical remote.
+- **Customizable Multi-Layer Profiles**:
+  - Fully customizable button mapping layers (shipped with Layer 1: Media and Layer 2: Mouse as the default configuration).
+  - Add, duplicate, and delete custom layers directly in the Settings app or config file.
+  - Cycle through layers or jump directly to specific profiles using any mapped button.
+  - Support for tap, hold (long-press), and double-tap actions across all buttons for keys, key combinations, mouse clicks, shell commands, or system actions.
+- **Virtual Mouse & Smooth Acceleration**:
+  - Emulates an accelerated virtual mouse pointer with configurable base speed, maximum speed, exponential curves, and scroll steps.
+- **Whisper Voice Dictation**:
+  - Hold the Assistant button to stream speech directly into local faster-whisper inference (with CUDA GPU acceleration or CPU) and auto-type into the active window.
+- **Sleep & Wake Resilient**:
+  - Automatically reconnects and re-grabs the remote whenever Bluetooth connects, disconnects, or wakes from suspend.
+- **Interactive Libadwaita GUI**:
+  - Visual remote simulator providing live feedback as you press physical buttons, with direct per-layer configuration.
 
 ## Quick Start
 

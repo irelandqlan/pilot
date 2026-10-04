@@ -132,9 +132,12 @@ class RemoteDaemon:
             accel_rate=mouse_cfg.get("acceleration", 1.14),
             poll_rate_ms=mouse_cfg.get("poll_rate_ms", 16)
         )
-        self.current_mode = self.config.get("general", {}).get("initial_mode", "media")
         self.long_press_threshold = self.config.get("general", {}).get("long_press_threshold_sec", 0.7)
         self.scroll_step = mouse_cfg.get("scroll_step", 2)
+
+        modes = self.get_modes()
+        init_mode = self.config.get("general", {}).get("initial_mode", "media")
+        self.current_mode = init_mode if init_mode in modes else modes[0]
 
         self.pending_presses = {} # keycode: {'time': float, 'timer': Timer, 'fired_long': bool}
         self.recent_taps = {} # keycode: {'timer': Timer}
@@ -150,23 +153,43 @@ class RemoteDaemon:
         self.is_running = False
         sys.exit(0)
 
-    def toggle_mode(self):
-        """Toggle between Media mode and Mouse mode."""
-        self.current_mode = "mouse" if self.current_mode == "media" else "media"
-        logger.info(f"Mode switched to: {self.current_mode.upper()}")
+    def get_modes(self):
+        """Returns ordered list of available layers/modes from config."""
+        modes = list(self.config.get("mode", {}).keys())
+        if not modes:
+            return ["media", "mouse"]
+        return modes
+
+    def switch_to_mode(self, new_mode: str):
+        """Switch directly to a given layer/mode."""
+        modes = self.get_modes()
+        if new_mode not in modes:
+            logger.warning(f"Requested layer '{new_mode}' not found in configuration.")
+            return
+
+        self.current_mode = new_mode
+        logger.info(f"Layer switched to: {self.current_mode.upper()}")
         
-        # Stop mouse movement loop if switching out of mouse mode
-        if self.current_mode != "mouse":
-            self.mouse.stop_all()
+        # Stop mouse movement loop if switching layers
+        self.mouse.stop_all()
 
         if self.config.get("general", {}).get("notifications", False):
-            if self.current_mode == "mouse":
-                system.send_notification("Mouse Mode", "Cursor control & navigation", icon="input-mouse-symbolic")
-            else:
-                system.send_notification("Media Mode", "Playback & shortcuts", icon="media-playback-start-symbolic")
+            title = self.current_mode.replace("_", " ").title()
+            icon = "input-mouse-symbolic" if "mouse" in self.current_mode.lower() else "media-playback-start-symbolic"
+            system.send_notification(f"Pilot: {title}", f"Switched to {title} layer", icon=icon)
 
         if self.config.get("general", {}).get("sound_feedback", False):
-            system.play_sound(self.current_mode, volume=0.28)
+            sound_name = "mouse" if "mouse" in self.current_mode.lower() else "media"
+            system.play_sound(sound_name, volume=0.28)
+
+    def toggle_mode(self):
+        """Cycle to the next layer/mode in the configuration."""
+        modes = self.get_modes()
+        if self.current_mode in modes:
+            idx = (modes.index(self.current_mode) + 1) % len(modes)
+        else:
+            idx = 0
+        self.switch_to_mode(modes[idx])
 
     def emit_key_tap(self, key_code):
         """Emit a key press followed immediately by release."""
@@ -214,6 +237,9 @@ class RemoteDaemon:
 
         if action_str == "action:toggle_mode":
             self.toggle_mode()
+        elif action_str.startswith("action:switch_mode:"):
+            target_mode = action_str.split(":", 2)[2]
+            self.switch_to_mode(target_mode)
         elif action_str == "action:screen_off":
             system.toggle_displays("off")
         elif action_str == "action:lock_screen":
