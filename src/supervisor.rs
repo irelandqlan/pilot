@@ -21,12 +21,24 @@ impl WorkerSupervisor {
 
     pub fn find_python() -> PathBuf {
         let home = glib_home_dir();
-        let candidates = [
-            home.join(".local/share/pilot/venv/bin/python3"),
-            home.join(".local/share/chromecast-remote/venv/bin/python3"),
-            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/venv/bin/python3")),
-            PathBuf::from("/usr/bin/python3"),
-        ];
+        let is_system_install = std::env::current_exe()
+            .ok()
+            .map(|p| p.starts_with("/usr"))
+            .unwrap_or(false);
+
+        let mut candidates = Vec::new();
+        if !is_system_install {
+            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/venv/bin/python3")));
+            candidates.push(home.join(".local/share/pilot/venv/bin/python3"));
+            candidates.push(home.join(".local/share/chromecast-remote/venv/bin/python3"));
+            candidates.push(PathBuf::from("/usr/bin/python3"));
+        } else {
+            candidates.push(home.join(".local/share/pilot/venv/bin/python3"));
+            candidates.push(home.join(".local/share/chromecast-remote/venv/bin/python3"));
+            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/venv/bin/python3")));
+            candidates.push(PathBuf::from("/usr/bin/python3"));
+        }
+
         for p in candidates {
             if p.exists() {
                 return p;
@@ -37,12 +49,33 @@ impl WorkerSupervisor {
 
     pub fn find_script(script_name: &str) -> Option<PathBuf> {
         let home = glib_home_dir();
-        let candidates = [
-            PathBuf::from("/usr/libexec/pilot").join(script_name),
-            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"))).join(script_name),
-            home.join(".local/share/pilot").join(script_name),
-            home.join(".local/share/chromecast-remote").join(script_name),
-        ];
+        let is_system_install = std::env::current_exe()
+            .ok()
+            .map(|p| p.starts_with("/usr"))
+            .unwrap_or(false);
+
+        let mut candidates = Vec::new();
+        if !is_system_install {
+            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"))).join(script_name));
+            if let Ok(cur_exe) = std::env::current_exe() {
+                if let Some(p) = cur_exe.parent() {
+                    candidates.push(p.join(script_name));
+                    if let Some(pp) = p.parent() {
+                        if let Some(ppp) = pp.parent() {
+                            candidates.push(ppp.join(script_name));
+                        }
+                    }
+                }
+            }
+            candidates.push(home.join(".local/share/pilot").join(script_name));
+            candidates.push(PathBuf::from("/usr/libexec/pilot").join(script_name));
+        } else {
+            candidates.push(home.join(".local/share/pilot").join(script_name));
+            candidates.push(PathBuf::from("/usr/libexec/pilot").join(script_name));
+            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"))).join(script_name));
+        }
+        candidates.push(home.join(".local/share/chromecast-remote").join(script_name));
+
         for p in candidates {
             if p.exists() {
                 return Some(p);
@@ -53,13 +86,29 @@ impl WorkerSupervisor {
 
     pub fn find_atvvoice() -> Option<PathBuf> {
         let home = glib_home_dir();
-        let candidates = [
-            PathBuf::from("/usr/libexec/pilot/pilot-atvvoice"),
-            PathBuf::from("/usr/libexec/pilot/atvvoice"),
-            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/pilot-atvvoice")),
-            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/atvvoice")),
-            home.join(".local/share/chromecast-remote/bin/atvvoice"),
-        ];
+        let is_system_install = std::env::current_exe()
+            .ok()
+            .map(|p| p.starts_with("/usr"))
+            .unwrap_or(false);
+
+        let mut candidates = Vec::new();
+        if !is_system_install {
+            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/pilot-atvvoice")));
+            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/atvvoice")));
+            candidates.push(PathBuf::from("/usr/libexec/pilot/pilot-atvvoice"));
+            candidates.push(PathBuf::from("/usr/libexec/pilot/atvvoice"));
+            candidates.push(home.join(".local/bin/pilot-atvvoice"));
+            candidates.push(home.join(".local/bin/atvvoice"));
+        } else {
+            candidates.push(PathBuf::from("/usr/libexec/pilot/pilot-atvvoice"));
+            candidates.push(PathBuf::from("/usr/libexec/pilot/atvvoice"));
+            candidates.push(home.join(".local/bin/pilot-atvvoice"));
+            candidates.push(home.join(".local/bin/atvvoice"));
+            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/pilot-atvvoice")));
+            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/atvvoice")));
+        }
+        candidates.push(home.join(".local/share/chromecast-remote/bin/atvvoice"));
+
         for p in candidates {
             if p.exists() {
                 return Some(p);
