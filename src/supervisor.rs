@@ -1,10 +1,13 @@
 use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Clone, Default)]
 pub struct WorkerSupervisor {
+    remote_stop: Arc<AtomicBool>,
+    remote_running: Arc<AtomicBool>,
     remote_child: Arc<Mutex<Option<Child>>>,
     voice_child: Arc<Mutex<Option<Child>>>,
     atv_child: Arc<Mutex<Option<Child>>>,
@@ -13,6 +16,8 @@ pub struct WorkerSupervisor {
 impl WorkerSupervisor {
     pub fn new() -> Self {
         Self {
+            remote_stop: Arc::new(AtomicBool::new(false)),
+            remote_running: Arc::new(AtomicBool::new(false)),
             remote_child: Arc::new(Mutex::new(None)),
             voice_child: Arc::new(Mutex::new(None)),
             atv_child: Arc::new(Mutex::new(None)),
@@ -120,51 +125,54 @@ impl WorkerSupervisor {
     // --- Remote Controller Worker ---
 
     pub fn is_remote_running(&self) -> bool {
+        if self.remote_running.load(Ordering::SeqCst) {
+            return true;
+        }
         let mut lock = self.remote_child.lock().unwrap();
         if check_child_running(&mut lock) {
             return true;
         }
-        // Fallback check if running via systemd unit
         is_systemd_unit_active("pilot-remote.service")
             || is_systemd_unit_active("chromecast-remote.service")
     }
 
     pub fn start_remote(&self) -> bool {
-        let mut lock = self.remote_child.lock().unwrap();
-        if check_child_running(&mut lock) {
+        if self.remote_running.load(Ordering::SeqCst) {
             return true;
         }
 
         // Stop legacy systemd unit if active to avoid EVIOCGRAB conflict
         stop_systemd_unit_if_active(&["pilot-remote.service", "chromecast-remote.service"]);
 
-        let python = Self::find_python();
-        let script = match Self::find_script("remote_daemon.py") {
-            Some(s) => s,
-            None => {
-                eprintln!("[Supervisor] remote_daemon.py not found");
+        let cfg = match crate::load_config() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[Supervisor] Failed to load config for remote: {}", e);
                 return false;
             }
         };
 
-        eprintln!("[Supervisor] Spawning remote daemon: {:?} {:?}", python, script);
-        match Command::new(&python)
-            .arg(&script)
-            .env("PYTHONUNBUFFERED", "1")
-            .spawn()
-        {
-            Ok(child) => {
-                *lock = Some(child);
-                true
+        self.remote_stop.store(false, Ordering::SeqCst);
+        self.remote_running.store(true, Ordering::SeqCst);
+
+        let stop_flag = self.remote_stop.clone();
+        let running_flag = self.remote_running.clone();
+
+        eprintln!("[Supervisor] Starting native Rust remote engine thread...");
+        std::thread::spawn(move || {
+            if let Err(e) = crate::remote::run_remote_controller(stop_flag, cfg) {
+                eprintln!("[Supervisor] Remote controller error: {}", e);
             }
-            Err(e) => {
-                eprintln!("[Supervisor] Failed to spawn remote daemon: {}", e);
-                false
-            }
-        }
+            running_flag.store(false, Ordering::SeqCst);
+        });
+
+        true
     }
 
     pub fn stop_remote(&self) {
+        self.remote_stop.store(true, Ordering::SeqCst);
+        self.remote_running.store(false, Ordering::SeqCst);
+
         let mut lock = self.remote_child.lock().unwrap();
         stop_child(&mut lock);
         stop_systemd_unit_if_active(&["pilot-remote.service", "chromecast-remote.service"]);
@@ -247,8 +255,17 @@ impl WorkerSupervisor {
             }
         };
 
+        let mac_opt = crate::remote::discover_chromecast_mac();
+        let mut cmd = Command::new(&bin);
+        if let Some(ref mac) = mac_opt {
+            eprintln!("[Supervisor] Discovered Chromecast remote MAC: {}", mac);
+            cmd.args(["-d", mac, "--frame-timeout", "0", "-g", "10"]);
+        } else {
+            cmd.args(["--frame-timeout", "0", "-g", "10"]);
+        }
+
         eprintln!("[Supervisor] Spawning atvvoice: {:?}", bin);
-        match Command::new(&bin).spawn() {
+        match cmd.spawn() {
             Ok(child) => {
                 *lock = Some(child);
                 true
