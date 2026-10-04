@@ -41,7 +41,6 @@ cargo build --release
 rm -rf %{buildroot}
 mkdir -p %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{_libexecdir}/pilot
-mkdir -p %{buildroot}%{_libexecdir}/pilot/actions
 mkdir -p %{buildroot}%{_userunitdir}
 mkdir -p %{buildroot}%{_udevrulesdir}
 mkdir -p %{buildroot}%{_datadir}/applications
@@ -59,10 +58,8 @@ install -m 755 bin/pilot-ctl %{buildroot}%{_bindir}/pilot-ctl
 ln -s pilot-ctl %{buildroot}%{_bindir}/chromecast-ctl
 
 # Backend Daemons & Helpers
-install -m 755 remote_daemon.py %{buildroot}%{_libexecdir}/pilot/remote_daemon.py
 install -m 755 voice_daemon.py %{buildroot}%{_libexecdir}/pilot/voice_daemon.py
 install -m 755 bin/atvvoice %{buildroot}%{_libexecdir}/pilot/atvvoice
-cp -r actions/*.py %{buildroot}%{_libexecdir}/pilot/actions/
 
 # Default config template
 install -m 644 config.toml %{buildroot}%{_datadir}/pilot/config.toml
