@@ -1,0 +1,57 @@
+app-id: io.github.magnotec.Pilot
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: pilot
+
+finish-args:
+  # Display & Windowing
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+
+  # Direct hardware access for evdev remote grab & virtual uinput creation
+  - --device=all
+
+  # Audio & Bluetooth
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  - --system-talk-name=org.bluez
+
+  # Portals & Notifications
+  - --talk-name=org.freedesktop.portal.Background
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.Notifications
+
+  # Configuration storage
+  - --filesystem=xdg-config/pilot:create
+  - --filesystem=xdg-config/chromecast-remote:create
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  build-args:
+    - --share=network
+  env:
+    CARGO_HOME: /run/build/pilot/cargo
+
+modules:
+  - name: pilot
+    buildsystem: simple
+    build-commands:
+      - cargo build --release
+      - install -Dm755 target/release/pilot /app/bin/pilot
+      - ln -s pilot /app/bin/chromecast-settings
+      - install -Dm755 bin/pilot-ctl /app/bin/pilot-ctl
+      - ln -s pilot-ctl /app/bin/chromecast-ctl
+      - install -Dm755 bin/atvvoice /app/bin/atvvoice
+      - install -Dm644 config.toml /app/share/pilot/config.toml
+      - install -Dm644 data/io.github.magnotec.Pilot.desktop /app/share/applications/io.github.magnotec.Pilot.desktop
+      - install -Dm644 data/io.github.magnotec.Pilot.svg /app/share/icons/hicolor/scalable/apps/io.github.magnotec.Pilot.svg
+      - install -d /app/share/icons/hicolor/scalable/actions
+      - install -m644 data/icons/*.svg /app/share/icons/hicolor/scalable/actions/
+      - install -Dm644 data/io.github.magnotec.Pilot.metainfo.xml /app/share/metainfo/io.github.magnotec.Pilot.metainfo.xml
+    sources:
+      - type: dir
+        path: .

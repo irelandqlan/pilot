@@ -122,12 +122,21 @@ fn get_config_path() -> PathBuf {
 fn load_config() -> Result<AppConfig, String> {
     let path = get_config_path();
     if !path.exists() {
+        let app_cfg = PathBuf::from("/app/share/pilot/config.toml");
         let sys_cfg = PathBuf::from("/usr/share/pilot/config.toml");
-        if sys_cfg.exists() {
+        let fallback = if app_cfg.exists() {
+            Some(app_cfg)
+        } else if sys_cfg.exists() {
+            Some(sys_cfg)
+        } else {
+            None
+        };
+
+        if let Some(src) = fallback {
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            let _ = fs::copy(&sys_cfg, &path);
+            let _ = fs::copy(&src, &path);
         } else {
             return Err(format!("Config file not found at {}", path.display()));
         }
@@ -450,6 +459,8 @@ fn main() {
         if let Some(display) = gtk::gdk::Display::default() {
             let theme = gtk::IconTheme::for_display(&display);
             theme.add_resource_path("/io/github/magnotec/Pilot/icons");
+            theme.add_search_path("/app/share/icons/hicolor/scalable/actions");
+            theme.add_search_path("/app/share/pilot/icons");
             theme.add_search_path("/usr/share/icons/hicolor/scalable/actions");
             theme.add_search_path("/usr/share/pilot/icons");
             let home = gtk::glib::home_dir();

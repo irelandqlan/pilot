@@ -62,7 +62,6 @@ ln -s pilot-ctl %{buildroot}%{_bindir}/chromecast-ctl
 install -m 755 remote_daemon.py %{buildroot}%{_libexecdir}/pilot/remote_daemon.py
 install -m 755 voice_daemon.py %{buildroot}%{_libexecdir}/pilot/voice_daemon.py
 install -m 755 bin/atvvoice %{buildroot}%{_libexecdir}/pilot/atvvoice
-install -m 755 bin/pilot-atvvoice %{buildroot}%{_libexecdir}/pilot/pilot-atvvoice
 cp -r actions/*.py %{buildroot}%{_libexecdir}/pilot/actions/
 
 # Default config template

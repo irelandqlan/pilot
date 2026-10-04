@@ -28,7 +28,7 @@ impl WorkerSupervisor {
         let home = glib_home_dir();
         let is_system_install = std::env::current_exe()
             .ok()
-            .map(|p| p.starts_with("/usr"))
+            .map(|p| p.starts_with("/usr") || p.starts_with("/app"))
             .unwrap_or(false);
 
         let mut candidates = Vec::new();
@@ -36,11 +36,13 @@ impl WorkerSupervisor {
             candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/venv/bin/python3")));
             candidates.push(home.join(".local/share/pilot/venv/bin/python3"));
             candidates.push(home.join(".local/share/chromecast-remote/venv/bin/python3"));
+            candidates.push(PathBuf::from("/app/bin/python3"));
             candidates.push(PathBuf::from("/usr/bin/python3"));
         } else {
             candidates.push(home.join(".local/share/pilot/venv/bin/python3"));
             candidates.push(home.join(".local/share/chromecast-remote/venv/bin/python3"));
             candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/venv/bin/python3")));
+            candidates.push(PathBuf::from("/app/bin/python3"));
             candidates.push(PathBuf::from("/usr/bin/python3"));
         }
 
@@ -56,7 +58,7 @@ impl WorkerSupervisor {
         let home = glib_home_dir();
         let is_system_install = std::env::current_exe()
             .ok()
-            .map(|p| p.starts_with("/usr"))
+            .map(|p| p.starts_with("/usr") || p.starts_with("/app"))
             .unwrap_or(false);
 
         let mut candidates = Vec::new();
@@ -73,9 +75,11 @@ impl WorkerSupervisor {
                 }
             }
             candidates.push(home.join(".local/share/pilot").join(script_name));
+            candidates.push(PathBuf::from("/app/libexec/pilot").join(script_name));
             candidates.push(PathBuf::from("/usr/libexec/pilot").join(script_name));
         } else {
             candidates.push(home.join(".local/share/pilot").join(script_name));
+            candidates.push(PathBuf::from("/app/libexec/pilot").join(script_name));
             candidates.push(PathBuf::from("/usr/libexec/pilot").join(script_name));
             candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"))).join(script_name));
         }
@@ -93,23 +97,21 @@ impl WorkerSupervisor {
         let home = glib_home_dir();
         let is_system_install = std::env::current_exe()
             .ok()
-            .map(|p| p.starts_with("/usr"))
+            .map(|p| p.starts_with("/usr") || p.starts_with("/app"))
             .unwrap_or(false);
 
         let mut candidates = Vec::new();
         if !is_system_install {
-            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/pilot-atvvoice")));
             candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/atvvoice")));
-            candidates.push(PathBuf::from("/usr/libexec/pilot/pilot-atvvoice"));
+            candidates.push(PathBuf::from("/app/bin/atvvoice"));
+            candidates.push(PathBuf::from("/app/libexec/pilot/atvvoice"));
             candidates.push(PathBuf::from("/usr/libexec/pilot/atvvoice"));
-            candidates.push(home.join(".local/bin/pilot-atvvoice"));
             candidates.push(home.join(".local/bin/atvvoice"));
         } else {
-            candidates.push(PathBuf::from("/usr/libexec/pilot/pilot-atvvoice"));
+            candidates.push(PathBuf::from("/app/bin/atvvoice"));
+            candidates.push(PathBuf::from("/app/libexec/pilot/atvvoice"));
             candidates.push(PathBuf::from("/usr/libexec/pilot/atvvoice"));
-            candidates.push(home.join(".local/bin/pilot-atvvoice"));
             candidates.push(home.join(".local/bin/atvvoice"));
-            candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/pilot-atvvoice")));
             candidates.push(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/bin/atvvoice")));
         }
         candidates.push(home.join(".local/share/chromecast-remote/bin/atvvoice"));

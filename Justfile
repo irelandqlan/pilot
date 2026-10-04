@@ -22,6 +22,14 @@ check:
 build-release:
     cargo build --release
 
+# Build and install Flatpak package locally
+flatpak:
+    flatpak-builder --force-clean --user --install build/flatpak io.github.magnotec.Pilot.yml
+
+# Run the installed Flatpak application
+flatpak-run:
+    flatpak run io.github.magnotec.Pilot
+
 # Build Fedora RPM package into dist/
 rpm:
     #!/usr/bin/env bash
