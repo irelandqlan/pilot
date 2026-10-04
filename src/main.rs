@@ -329,6 +329,29 @@ pub fn get_mode_title(mode_key: &str) -> String {
     }
 }
 
+pub fn get_mode_icon(cfg: &AppConfig, mode_key: &str) -> String {
+    if let Some(mode_table) = cfg.mode.get(mode_key).and_then(|v| v.as_table()) {
+        if let Some(icon) = mode_table.get("icon").and_then(|v| v.as_str()) {
+            let trimmed = icon.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    let lower = mode_key.to_lowercase();
+    if lower == "media" || lower.contains("media") || lower.contains("audio") || lower.contains("music") {
+        "applications-multimedia-symbolic".to_string()
+    } else if lower == "mouse" || lower.contains("mouse") || lower.contains("pointer") || lower.contains("cursor") {
+        "input-mouse-symbolic".to_string()
+    } else if lower.contains("game") || lower.contains("gaming") {
+        "input-gaming-symbolic".to_string()
+    } else if lower.contains("tv") || lower.contains("video") || lower.contains("display") {
+        "video-display-symbolic".to_string()
+    } else {
+        "preferences-desktop-remote-desktop-symbolic".to_string()
+    }
+}
+
 pub fn get_button_actions(
     cfg: &AppConfig,
     mode_name: &str,
@@ -1453,9 +1476,10 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         .build();
     switcher_box.append(&add_layer_btn);
 
-    // Layer options menu (Rename / Duplicate / Delete)
+    // Layer options menu (Rename / Change Icon / Duplicate / Delete)
     let layer_menu = gtk::gio::Menu::new();
     layer_menu.append(Some("Rename Current Layer…"), Some("win.rename_layer"));
+    layer_menu.append(Some("Change Layer Icon…"), Some("win.change_layer_icon"));
     layer_menu.append(Some("Duplicate Current Layer"), Some("win.duplicate_layer"));
     layer_menu.append(Some("Delete Current Layer"), Some("win.delete_layer"));
 
@@ -2015,6 +2039,139 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
             });
         });
         window.add_action(&act_ren);
+    }
+
+    // Change Layer Icon Window Action
+    {
+        let act_icon = gtk::gio::SimpleAction::new("change_layer_icon", None);
+        let win_icon = window.clone();
+        let cfg_icon = config.clone();
+        let act_mode_icon = active_mode.clone();
+        let chk_icon = check_changes.clone();
+        let toast_icon = toast_overlay.clone();
+
+        act_icon.connect_activate(move |_, _| {
+            let cur = act_mode_icon.borrow().clone();
+            let cur_title = get_mode_title(&cur);
+            let cur_icon = get_mode_icon(&cfg_icon.borrow(), &cur);
+
+            let preview_icon = gtk::Image::builder()
+                .icon_name(&cur_icon)
+                .pixel_size(48)
+                .margin_top(8)
+                .margin_bottom(8)
+                .halign(gtk::Align::Center)
+                .build();
+
+            let entry = gtk::Entry::builder()
+                .placeholder_text("Icon name (e.g. applications-multimedia-symbolic)")
+                .text(&cur_icon)
+                .margin_start(12)
+                .margin_end(12)
+                .margin_top(4)
+                .margin_bottom(8)
+                .build();
+
+            let presets = [
+                ("applications-multimedia-symbolic", "Media"),
+                ("input-mouse-symbolic", "Mouse"),
+                ("input-gaming-symbolic", "Gaming"),
+                ("video-display-symbolic", "Display"),
+                ("audio-speakers-symbolic", "Audio"),
+                ("input-keyboard-symbolic", "Keyboard"),
+                ("preferences-desktop-remote-desktop-symbolic", "Remote"),
+                ("io.github.irelandqlan.Pilot", "Pilot"),
+            ];
+
+            let flowbox = gtk::FlowBox::builder()
+                .selection_mode(gtk::SelectionMode::None)
+                .max_children_per_line(4)
+                .min_children_per_line(4)
+                .row_spacing(6)
+                .column_spacing(6)
+                .halign(gtk::Align::Center)
+                .margin_bottom(8)
+                .build();
+
+            for (icon_name, tooltip) in presets {
+                let btn = gtk::Button::builder()
+                    .icon_name(icon_name)
+                    .tooltip_text(tooltip)
+                    .css_classes(["flat"])
+                    .build();
+                let entry_c = entry.clone();
+                let preview_c = preview_icon.clone();
+                let iname = icon_name.to_string();
+                btn.connect_clicked(move |_| {
+                    entry_c.set_text(&iname);
+                    preview_c.set_icon_name(Some(&iname));
+                });
+                flowbox.append(&btn);
+            }
+
+            {
+                let preview_c = preview_icon.clone();
+                entry.connect_text_notify(move |e| {
+                    let text = e.text().trim().to_string();
+                    if !text.is_empty() {
+                        preview_c.set_icon_name(Some(&text));
+                    }
+                });
+            }
+
+            let content_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+            content_box.append(&preview_icon);
+            content_box.append(&flowbox);
+            content_box.append(&entry);
+
+            let dialog = adw::AlertDialog::builder()
+                .heading("Change Layer Icon")
+                .body(format!("Select or enter an icon for '{}':", cur_title))
+                .extra_child(&content_box)
+                .build();
+            dialog.add_response("cancel", "Cancel");
+            dialog.add_response("save", "Save");
+            dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+            dialog.set_default_response(Some("save"));
+
+            let cfg_c = cfg_icon.clone();
+            let chk_c = chk_icon.clone();
+            let toast_c = toast_icon.clone();
+            let cur_key = cur.clone();
+            let entry_c = entry.clone();
+
+            dialog.choose(&win_icon, gtk::gio::Cancellable::NONE, move |choice| {
+                if choice == "save" {
+                    let new_icon = entry_c.text().trim().to_string();
+                    if new_icon.is_empty() {
+                        return;
+                    }
+
+                    if let Some(table) = cfg_c
+                        .borrow_mut()
+                        .mode
+                        .get_mut(&cur_key)
+                        .and_then(|v| v.as_table_mut())
+                    {
+                        table.insert("icon".to_string(), toml::Value::String(new_icon.clone()));
+                    } else {
+                        let mut table = toml::Table::new();
+                        table.insert("icon".to_string(), toml::Value::String(new_icon.clone()));
+                        cfg_c
+                            .borrow_mut()
+                            .mode
+                            .insert(cur_key.clone(), toml::Value::Table(table));
+                    }
+
+                    chk_c();
+                    toast_c.add_toast(adw::Toast::new(&format!(
+                        "Icon updated for {}",
+                        get_mode_title(&cur_key)
+                    )));
+                }
+            });
+        });
+        window.add_action(&act_icon);
     }
 
     // Duplicate Layer Window Action
@@ -2844,6 +3001,54 @@ KEY_SELECT = "action:play_pause"
         assert!(!cfg.mode.contains_key("media_copy2"));
         assert!(cfg.mode.contains_key("gaming"));
         assert_eq!(get_mode_title("gaming"), "Gaming");
+    }
+
+    #[test]
+    fn test_get_mode_icon() {
+        let mut cfg = AppConfig {
+            device: DeviceConfig {
+                enabled: true,
+                name_pattern: "Chromecast Remote".into(),
+                grab_device: true,
+                reconnect_poll_interval: 1.0,
+            },
+            general: GeneralConfig {
+                initial_mode: "media".into(),
+                long_press_threshold_sec: 0.5,
+                notifications: true,
+                sound_feedback: false,
+                hide_on_close: true,
+            },
+            mouse: MouseConfig {
+                base_speed: 10.0,
+                max_speed: 100.0,
+                acceleration: 1.5,
+                poll_rate_ms: 10,
+                scroll_step: 1,
+            },
+            voice: VoiceConfig {
+                enabled: true,
+                model: "base".into(),
+                paste_method: "clipboard".into(),
+                min_duration_sec: 0.5,
+                auto_spacing: true,
+                device: "cpu".into(),
+                compute_type: "float32".into(),
+            },
+            mode: toml::Table::new(),
+        };
+
+        // Defaults by name
+        assert_eq!(get_mode_icon(&cfg, "media"), "applications-multimedia-symbolic");
+        assert_eq!(get_mode_icon(&cfg, "mouse"), "input-mouse-symbolic");
+        assert_eq!(get_mode_icon(&cfg, "gaming"), "input-gaming-symbolic");
+        assert_eq!(get_mode_icon(&cfg, "custom_layer"), "preferences-desktop-remote-desktop-symbolic");
+
+        // Custom icon in table
+        let mut custom_table = toml::Table::new();
+        custom_table.insert("icon".to_string(), toml::Value::String("emblem-music-symbolic".to_string()));
+        cfg.mode.insert("custom_layer".to_string(), toml::Value::Table(custom_table));
+        assert_eq!(get_mode_icon(&cfg, "custom_layer"), "emblem-music-symbolic");
     }
 }
 

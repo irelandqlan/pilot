@@ -28,6 +28,7 @@ device = "cuda"
 compute_type = "float16"
 
 [mode.media]
+icon = "applications-multimedia-symbolic"
 KEY_CAMERA_ACCESS_DISABLE = "key:KEY_TAB"
 KEY_CAMERA_ACCESS_TOGGLE = "keys:KEY_LEFTSHIFT+KEY_TAB"
 KEY_HOMEPAGE = "key:KEY_LEFTMETA"
@@ -65,6 +66,7 @@ long_press = "action:scroll_up"
 tap = "key:KEY_UP"
 
 [mode.mouse]
+icon = "input-mouse-symbolic"
 KEY_CAMERA_ACCESS_DISABLE = "key:KEY_TAB"
 KEY_CAMERA_ACCESS_TOGGLE = "keys:KEY_LEFTSHIFT+KEY_TAB"
 KEY_DOWN = "mouse:move_down"

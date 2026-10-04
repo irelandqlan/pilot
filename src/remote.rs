@@ -434,29 +434,80 @@ pub fn play_sound(mode_name: &str) {
 
 static LAST_NOTIF_INFO: Mutex<Option<(u32, Instant)>> = Mutex::new(None);
 
-pub fn show_mode_notification(target_mode: &str) {
+pub fn show_mode_notification(target_mode: &str, config_arc: &Arc<RwLock<crate::AppConfig>>) {
     let mode_title = crate::get_mode_title(target_mode);
     let title = "Mode";
     let body = format!("Active Layer: {}", mode_title);
-    let icon = "preferences-desktop-remote-symbolic";
+
+    let icon = {
+        let cfg = config_arc.read().unwrap();
+        crate::get_mode_icon(&cfg, target_mode)
+    };
 
     let mut lock = LAST_NOTIF_INFO.lock().unwrap();
+    let replaces_id = if let Some((prev_id, prev_time)) = *lock {
+        if prev_time.elapsed() < Duration::from_millis(2500) {
+            prev_id
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    let now = Instant::now();
+
+    // 1. Try gdbus first: calls org.freedesktop.Notifications.Notify directly on session bus,
+    // which bypasses portal icon stripping inside Flatpak and supports custom symbolic icons smoothly.
+    let gdbus_res = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--dest", "org.freedesktop.Notifications",
+            "--object-path", "/org/freedesktop/Notifications",
+            "--method", "org.freedesktop.Notifications.Notify",
+            "Pilot",
+            &replaces_id.to_string(),
+            &icon,
+            title,
+            &body,
+            "[]",
+            "{'transient': <true>}",
+            "1500",
+        ])
+        .output();
+
+    if let Ok(output) = gdbus_res {
+        if output.status.success() {
+            if let Ok(s) = std::str::from_utf8(&output.stdout) {
+                if let Some(start) = s.find("uint32 ") {
+                    let rest = &s[start + 7..];
+                    if let Some(end) = rest.find(|c: char| !c.is_ascii_digit()) {
+                        if let Ok(id) = rest[..end].parse::<u32>() {
+                            *lock = Some((id, now));
+                            return;
+                        }
+                    }
+                }
+            }
+            return;
+        }
+    }
+
+    // 2. Fallback to notify-send
     let mut cmd = Command::new("notify-send");
     cmd.args([
         "-p",
         "-a", "Pilot",
-        "-i", icon,
+        "-i", &icon,
         "-t", "1500",
         "-e",
         "-h", "int:transient:1",
         "-h", "string:x-canonical-private-synchronous:mode",
     ]);
 
-    let now = Instant::now();
-    if let Some((prev_id, prev_time)) = *lock {
-        if prev_time.elapsed() < Duration::from_millis(2000) {
-            cmd.args(["-r", &prev_id.to_string()]);
-        }
+    if replaces_id != 0 {
+        cmd.args(["-r", &replaces_id.to_string()]);
     }
 
     cmd.arg(title);
@@ -571,7 +622,7 @@ pub fn execute_action(
                     play_sound(next);
                 }
                 if notif_enabled {
-                    show_mode_notification(next);
+                    show_mode_notification(next, config_arc);
                 }
             } else if let Some(first) = available_modes.first() {
                 *cur = first.clone();
@@ -585,7 +636,7 @@ pub fn execute_action(
                 play_sound(target);
             }
             if notif_enabled {
-                show_mode_notification(target);
+                show_mode_notification(target, config_arc);
             }
         }
         "play_pause" => emit_key(uinput, Key::KEY_PLAYPAUSE),
