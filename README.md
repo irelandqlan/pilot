@@ -54,18 +54,27 @@ It pairs low-latency background input and speech daemons with a native Libadwait
 
 ## Installation
 
-### Fedora / RHEL RPM Package (Recommended)
+### Flatpak (Recommended)
+Build and install Pilot into your user Flatpak environment:
+```bash
+just flatpak
+# or build a standalone bundle in dist/
+just flatpak-bundle
+```
+Run with:
+```bash
+flatpak run io.github.magnotec.Pilot
+# or via command runner
+just flatpak-run
+```
+
+### Fedora / RHEL RPM Package
 Build and install Pilot as a native tracked RPM package:
 ```bash
 just rpm-install
 # or manually:
 just rpm
 sudo dnf install dist/pilot-*.rpm
-```
-
-### Local User Install
-```bash
-just install
 ```
 
 ## Quick Start
@@ -77,9 +86,11 @@ pilot
 just run
 ```
 
-Inspect services, Bluetooth pairing, and `/dev/uinput` permissions:
+Inspect process status, Bluetooth pairing, and `/dev/uinput` permissions:
 ```bash
 pilot-ctl status
+# or via command runner
+just status
 ```
 
-For full setup instructions, see the [Installation Guide](docs/INSTALL.md).
+For full setup instructions and hardware permissions, see the [Installation Guide](docs/INSTALL.md).

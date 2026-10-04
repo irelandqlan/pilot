@@ -30,6 +30,18 @@ flatpak:
 flatpak-run:
     flatpak run io.github.magnotec.Pilot
 
+# Build standalone Flatpak bundle (.flatpak file in dist/)
+flatpak-bundle:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
+    mkdir -p dist build/flatpak-repo
+    echo "==> Building Flatpak ostree repository..."
+    flatpak-builder --force-clean --repo=build/flatpak-repo build/flatpak io.github.magnotec.Pilot.yml
+    echo "==> Creating standalone bundle dist/pilot-v${VERSION}.flatpak..."
+    flatpak build-bundle build/flatpak-repo "dist/pilot-v${VERSION}.flatpak" io.github.magnotec.Pilot master
+    echo "✅ Flatpak bundle ready at dist/pilot-v${VERSION}.flatpak"
+
 # Build Fedora RPM package into dist/
 rpm:
     #!/usr/bin/env bash
@@ -154,6 +166,9 @@ release version:
 
     echo "==> Updating version to {{version}} in Cargo.toml..."
     sed -i -E 's/^version = "[^"]*"/version = "{{version}}"/' Cargo.toml
+    if [ -f "pilot.spec" ]; then
+        sed -i -E 's/^Version:\s+[0-9.]+/Version:        {{version}}/' pilot.spec
+    fi
     cargo check --quiet
 
     TODAY=$(date +%Y-%m-%d)
