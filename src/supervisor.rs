@@ -86,10 +86,8 @@ impl WorkerSupervisor {
             return true;
         }
 
-        // Stop legacy systemd unit to avoid EVIOCGRAB conflict
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "pilot-remote.service", "chromecast-remote.service"])
-            .status();
+        // Stop legacy systemd unit if active to avoid EVIOCGRAB conflict
+        stop_systemd_unit_if_active(&["pilot-remote.service", "chromecast-remote.service"]);
 
         let python = Self::find_python();
         let script = match Self::find_script("remote_daemon.py") {
@@ -120,9 +118,7 @@ impl WorkerSupervisor {
     pub fn stop_remote(&self) {
         let mut lock = self.remote_child.lock().unwrap();
         stop_child(&mut lock);
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "pilot-remote.service", "chromecast-remote.service"])
-            .status();
+        stop_systemd_unit_if_active(&["pilot-remote.service", "chromecast-remote.service"]);
     }
 
     // --- Voice Dictation Worker ---
@@ -142,9 +138,7 @@ impl WorkerSupervisor {
             return true;
         }
 
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "pilot-voice.service", "chromecast-voice.service"])
-            .status();
+        stop_systemd_unit_if_active(&["pilot-voice.service", "chromecast-voice.service"]);
 
         let python = Self::find_python();
         let script = match Self::find_script("voice_daemon.py") {
@@ -175,9 +169,7 @@ impl WorkerSupervisor {
     pub fn stop_voice(&self) {
         let mut lock = self.voice_child.lock().unwrap();
         stop_child(&mut lock);
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "pilot-voice.service", "chromecast-voice.service"])
-            .status();
+        stop_systemd_unit_if_active(&["pilot-voice.service", "chromecast-voice.service"]);
     }
 
     // --- ATVVoice BLE Audio Worker ---
@@ -196,9 +188,7 @@ impl WorkerSupervisor {
             return true;
         }
 
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "atvvoice.service"])
-            .status();
+        stop_systemd_unit_if_active(&["atvvoice.service"]);
 
         let bin = match Self::find_atvvoice() {
             Some(b) => b,
@@ -224,9 +214,7 @@ impl WorkerSupervisor {
     pub fn stop_atv(&self) {
         let mut lock = self.atv_child.lock().unwrap();
         stop_child(&mut lock);
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", "atvvoice.service"])
-            .status();
+        stop_systemd_unit_if_active(&["atvvoice.service"]);
     }
 
     // --- Global Controls ---
@@ -302,7 +290,21 @@ fn stop_child(child_opt: &mut Option<Child>) {
 fn is_systemd_unit_active(unit_name: &str) -> bool {
     Command::new("systemctl")
         .args(["--user", "is-active", "--quiet", unit_name])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+fn stop_systemd_unit_if_active(units: &[&str]) {
+    for unit in units {
+        if is_systemd_unit_active(unit) {
+            let _ = Command::new("systemctl")
+                .args(["--user", "stop", unit])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
+    }
 }
