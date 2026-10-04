@@ -32,7 +32,7 @@ jobs:
 
       - name: Build RPM Package
         run: |
-          dnf install -y rpm-build
+          dnf install -y rpm-build systemd-rpm-macros
           VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
           BUILD_DIR="$(pwd)/build/rpm"
           mkdir -p "${BUILD_DIR}/"{BUILD,RPMS,SOURCES,SPECS,SRPMS} dist

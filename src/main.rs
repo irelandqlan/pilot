@@ -423,9 +423,7 @@ fn main() {
         supervisor_shutdown.stop_all();
     });
 
-    app.connect_startup(|app| {
-        // Retain hold guard so the application stays alive in GNOME Background Apps when windows are closed
-        std::mem::forget(app.hold());
+    app.connect_startup(|_| {
         if let Some(display) = gtk::gdk::Display::default() {
             let theme = gtk::IconTheme::for_display(&display);
             theme.add_resource_path("/io/github/magnotec/Pilot/icons");
@@ -568,12 +566,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         .default_height(720)
         .width_request(365)
         .build();
-
-    // Hide window on close so app stays running in GNOME Background Apps
-    window.connect_close_request(|win| {
-        win.set_visible(false);
-        glib::Propagation::Stop
-    });
 
     let toast_overlay = adw::ToastOverlay::new();
 
@@ -967,11 +959,17 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         let chk = check_changes.clone();
         initial_mode_row.connect_selected_notify(move |r| {
             let sel = r.selected() as usize;
-            let current_modes = get_available_modes(&cfg.borrow());
-            if let Some(target) = current_modes.get(sel) {
-                if cfg.borrow().general.initial_mode != *target {
-                    cfg.borrow_mut().general.initial_mode = target.clone();
-                    chk();
+            if let Ok(cfg_lock) = cfg.try_borrow() {
+                let current_modes = get_available_modes(&cfg_lock);
+                if let Some(target) = current_modes.get(sel) {
+                    if cfg_lock.general.initial_mode != *target {
+                        let target_clone = target.clone();
+                        drop(cfg_lock);
+                        if let Ok(mut mut_lock) = cfg.try_borrow_mut() {
+                            mut_lock.general.initial_mode = target_clone;
+                        }
+                        chk();
+                    }
                 }
             }
         });
@@ -1369,6 +1367,7 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
 
     let mode_stack = gtk::Stack::new();
     mode_stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+    let is_rebuilding = Rc::new(std::cell::Cell::new(false));
 
     let init_modes = get_available_modes(&config.borrow());
     for m in &init_modes {
@@ -1758,9 +1757,15 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
     {
         let act_mode_c = active_mode.clone();
         let u_tips = update_all_tooltips.clone();
+        let is_reb = is_rebuilding.clone();
         mode_stack.connect_visible_child_name_notify(move |stk| {
+            if is_reb.get() {
+                return;
+            }
             if let Some(new_mode) = stk.visible_child_name() {
-                *act_mode_c.borrow_mut() = new_mode.to_string();
+                if let Ok(mut lock) = act_mode_c.try_borrow_mut() {
+                    *lock = new_mode.to_string();
+                }
                 u_tips();
             }
         });
@@ -1770,12 +1775,17 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
     let rebuild_layers = {
         let cfg_rc = config.clone();
         let m_stack = mode_stack.clone();
+        let m_switcher = mode_seg_switcher.clone();
         let act_mode_rc = active_mode.clone();
         let init_mode_row_c = initial_mode_row.clone();
         let init_model_c = initial_mode_model.clone();
         let u_tips = update_all_tooltips.clone();
+        let is_reb = is_rebuilding.clone();
 
         Rc::new(move || {
+            is_reb.set(true);
+            m_switcher.set_stack(None::<&gtk::Stack>);
+
             while let Some(child) = m_stack.first_child() {
                 m_stack.remove(&child);
             }
@@ -1786,6 +1796,8 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
                 m_stack.add_titled(&dummy, Some(m), &get_mode_title(m));
             }
 
+            m_switcher.set_stack(Some(&m_stack));
+
             let str_slices: Vec<String> = modes.iter().map(|m| get_mode_title(m)).collect();
             let str_refs: Vec<&str> = str_slices.iter().map(|s| s.as_str()).collect();
             init_model_c.splice(0, init_model_c.n_items(), &str_refs);
@@ -1793,11 +1805,16 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
             let sel = modes.iter().position(|m| m == cur_init).unwrap_or(0);
             init_mode_row_c.set_selected(sel as u32);
 
-            let mut cur_act = act_mode_rc.borrow_mut();
-            if !modes.contains(&*cur_act) {
-                *cur_act = modes[0].clone();
-            }
-            m_stack.set_visible_child_name(&*cur_act);
+            let target_mode = {
+                let mut cur_act = act_mode_rc.borrow_mut();
+                if !modes.contains(&*cur_act) {
+                    *cur_act = modes[0].clone();
+                }
+                cur_act.clone()
+            };
+
+            m_stack.set_visible_child_name(&target_mode);
+            is_reb.set(false);
             u_tips();
         })
     };
@@ -1806,7 +1823,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
     {
         let win_c = window.clone();
         let cfg_c = config.clone();
-        let m_stack_c = mode_stack.clone();
         let act_mode_c = active_mode.clone();
         let reb_c = rebuild_layers.clone();
         let chk_c = check_changes.clone();
@@ -1832,7 +1848,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
             dialog.set_default_response(Some("add"));
 
             let cfg_add = cfg_c.clone();
-            let m_stack_add = m_stack_c.clone();
             let act_mode_add = act_mode_c.clone();
             let reb_add = reb_c.clone();
             let chk_add = chk_c.clone();
@@ -1857,7 +1872,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
 
                     *act_mode_add.borrow_mut() = name.clone();
                     reb_add();
-                    m_stack_add.set_visible_child_name(&name);
                     chk_add();
                     toast_add.add_toast(adw::Toast::new(&format!("Added {}", get_mode_title(&name))));
                 }
@@ -1870,7 +1884,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         let act_dup = gtk::gio::SimpleAction::new("duplicate_layer", None);
         let cfg_dup = config.clone();
         let act_mode_dup = active_mode.clone();
-        let m_stack_dup = mode_stack.clone();
         let reb_dup = rebuild_layers.clone();
         let chk_dup = check_changes.clone();
         let toast_dup = toast_overlay.clone();
@@ -1889,7 +1902,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
             cfg_dup.borrow_mut().mode.insert(new_key.clone(), table);
             *act_mode_dup.borrow_mut() = new_key.clone();
             reb_dup();
-            m_stack_dup.set_visible_child_name(&new_key);
             chk_dup();
             toast_dup.add_toast(adw::Toast::new(&format!("Duplicated into {}", get_mode_title(&new_key))));
         });
@@ -1902,7 +1914,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         let win_del = window.clone();
         let cfg_del = config.clone();
         let act_mode_del = active_mode.clone();
-        let m_stack_del = mode_stack.clone();
         let reb_del = rebuild_layers.clone();
         let chk_del = check_changes.clone();
         let toast_del = toast_overlay.clone();
@@ -1929,7 +1940,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
 
             let cfg_del_conf = cfg_del.clone();
             let act_mode_del_conf = act_mode_del.clone();
-            let m_stack_del_conf = m_stack_del.clone();
             let reb_del_conf = reb_del.clone();
             let chk_del_conf = chk_del.clone();
             let toast_del_conf = toast_del.clone();
@@ -1941,7 +1951,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
                     let remaining = get_available_modes(&cfg_del_conf.borrow());
                     *act_mode_del_conf.borrow_mut() = remaining[0].clone();
                     reb_del_conf();
-                    m_stack_del_conf.set_visible_child_name(&remaining[0]);
                     chk_del_conf();
                     toast_del_conf.add_toast(adw::Toast::new(&format!("Deleted {}", get_mode_title(&cur_del))));
                 }
