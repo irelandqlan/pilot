@@ -23,8 +23,6 @@ finish-args:
   # D-Bus permissions for ATVVoice and Voice Daemon
   - --own-name=org.atvvoice.chromecast-remote
   - --own-name=org.local.Dictation
-  - --talk-name=org.atvvoice.chromecast-remote
-  - --talk-name=org.local.Dictation
 
   # Portals & Notifications
   - --talk-name=org.freedesktop.portal.Background
