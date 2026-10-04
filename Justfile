@@ -51,33 +51,25 @@ rpm-install: rpm
 
 # ── System Installation & Service Management ────────────────────────────────
 
-# Install Pilot binaries, services, desktop launcher, and icons
-install:
-    ./manage.sh install
-
-# Uninstall Pilot binaries and user services
-uninstall:
-    ./manage.sh uninstall
-
 # Inspect running services, Bluetooth connection, and input permissions
 status:
-    ./manage.sh status
+    ./bin/pilot-ctl status
 
 # Restart all background daemons
 restart:
-    ./manage.sh restart
+    ./bin/pilot-ctl restart
 
 # Follow combined journalctl output for Pilot daemons
 logs:
-    ./manage.sh logs
+    ./bin/pilot-ctl logs
 
 # Stop all background daemons
 stop:
-    ./manage.sh stop
+    ./bin/pilot-ctl stop
 
 # Start all background daemons
 start:
-    ./manage.sh start
+    ./bin/pilot-ctl start
 
 # ── Git & Branch Management ─────────────────────────────────────────────────
 
