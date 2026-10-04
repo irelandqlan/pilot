@@ -1,6 +1,26 @@
+# Rust build artifacts
 /target
+
+# Python virtual environment & cache
 /venv
 /__pycache__
 *.pyc
+*.pyo
+*.pyd
+
+# Temporary & test audio recordings
 *.wav
-/models
+*.mp3
+*.flac
+
+# Local models directory
+/models/
+
+# Flatpak / ostree artifacts
+/build-dir
+/.flatpak-builder
+/repo
+/*.flatpak
+
+# Tooling
+/.antigravitycli

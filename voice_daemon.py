@@ -19,15 +19,20 @@ from pathlib import Path
 
 # Load config from config.toml (with XDG user config support)
 def get_config_path() -> Path:
+    if "PILOT_CONFIG" in os.environ:
+        return Path(os.environ["PILOT_CONFIG"])
     if "CHROMECAST_REMOTE_CONFIG" in os.environ:
         return Path(os.environ["CHROMECAST_REMOTE_CONFIG"])
+    pilot_cfg = Path.home() / ".config" / "pilot" / "config.toml"
+    if pilot_cfg.exists():
+        return pilot_cfg
     user_cfg = Path.home() / ".config" / "chromecast-remote" / "config.toml"
     if user_cfg.exists():
         return user_cfg
     dev_cfg = Path(__file__).parent / "config.toml"
     if dev_cfg.exists():
         return dev_cfg
-    return user_cfg
+    return pilot_cfg if (Path.home() / ".config" / "pilot").exists() else user_cfg
 
 CONFIG_FILE = get_config_path()
 

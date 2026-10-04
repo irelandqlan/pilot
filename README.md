@@ -1,33 +1,37 @@
-# Chromecast Remote & Voice Control
+<div align="center">
+  <img src="data/io.github.magnotec.Pilot.svg" width="120" height="120" alt="Pilot Logo">
 
-Unified Linux / GNOME desktop controller and voice dictation system for the **Chromecast with Google TV Remote** (over Bluetooth).
+  # Pilot
 
-Includes:
-- **Python Daemons**: Remote input handler (`remote_daemon.py`), Whisper voice dictation service (`voice_daemon.py`), and PipeWire BLE microphone support (`atvvoice`).
-- **Rust / Libadwaita GUI**: Native desktop settings application (`chromecast-settings`) with interactive remote mapping, mouse tuning, and live event testing.
-- **Unified CLI Manager**: `manage.sh` (linked as `chromecast-ctl`) for one-command installation, status checks, restarts, and log monitoring.
+  A GTK4 and Libadwaita hardware controller and voice dictation suite for the Linux desktop.
 
----
+  <p>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-2021-ea6344?style=flat&logo=rust&logoColor=white" alt="Rust"></a>
+    <a href="https://gtk.org/"><img src="https://img.shields.io/badge/GTK-4-3584e4?style=flat&logo=gnome&logoColor=white" alt="GTK4"></a>
+    <a href="https://gnome.pages.gitlab.gnome.org/libadwaita/"><img src="https://img.shields.io/badge/Libadwaita-1.x-3584e4?style=flat" alt="Libadwaita"></a>
+    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11+-3776ab?style=flat&logo=python&logoColor=white" alt="Python"></a>
+  </p>
 
-## Architecture & Layout
+  <p>
+    <a href="docs/INSTALL.md">Install</a> &bull;
+    <a href="docs/DEVELOPMENT.md">Development</a> &bull;
+    <a href="docs/SERVICES.md">Services Architecture</a> &bull;
+    <a href="https://github.com/irelandqlan/pilot/issues">Issues</a>
+  </p>
+</div>
 
-```
-chromecast-remote/
-├── Cargo.toml / Cargo.lock   # Rust settings app build definition
-├── src/                      # Native Libadwaita / GTK4 Settings application
-│   └── main.rs
-├── data/                     # Icons & .desktop launcher
-├── remote_daemon.py          # Dual-mode (Media / Mouse) input daemon
-├── voice_daemon.py           # Whisper STT voice typing daemon
-├── actions/                  # Modular input action handlers (mouse, media, system)
-├── bin/                      # BLE microphone daemon (atvvoice)
-├── config.toml               # Master configuration file (XDG ~/.config/chromecast-remote/)
-├── manage.sh                 # Unified installer, service manager, and CLI utility
-├── install.sh / uninstall.sh # Quick setup wrappers
-└── venv/                     # Python virtual environment with dependencies
-```
+<br>
+
+> [!NOTE]
+> Designed specifically for the **Chromecast with Google TV Voice Remote** (over Bluetooth) on GNOME / Linux.
 
 ---
+
+## About
+
+**Pilot** turns your Chromecast with Google TV Bluetooth remote into a full PC media controller, smooth virtual mouse, and push-to-talk voice typing device.
+
+It pairs low-latency background input and speech daemons with a native Libadwaita settings application for button remapping, mouse acceleration tuning, and live visual testing.
 
 ## Features
 
@@ -35,54 +39,31 @@ chromecast-remote/
   - **Media Mode (Default)**: Volume, media scrub (seek forward/backward), play/pause, fullscreen, YouTube & streaming app launcher.
   - **Mouse Mode**: D-Pad becomes a smooth virtual mouse pointer with configurable exponential acceleration, tap Center for Left Click, Back for Right Click, side volume buttons for Scroll Wheel.
 - **Instant Mode Switching**: Press the **Input / TV** button to toggle modes anytime.
-- **Whisper Voice Dictation**: Hold the **Assistant (Mic)** button to speak; release to instantly transcribe and type via faster-whisper (CUDA accelerated).
+- **Whisper Voice Dictation**: Hold the **Assistant (Mic)** button to speak; release to instantly transcribe and type via faster-whisper (CUDA accelerated or CPU).
 - **Bedtime Power Controls**:
   - **Short Tap Power Button**: Blanks / puts monitors into power-save mode so you can sleep without bright screens.
   - **Hold Power Button (> 0.7s)**: Suspends PC (`systemctl suspend`).
 - **Sleep & Wake Resilient**: Continuously detects Bluetooth disconnects/reconnects and re-grabs the remote automatically.
 - **Native Settings App**: Modern GNOME Libadwaita UI to configure button bindings, mouse curves, and voice dictation settings.
+- **Live Event Simulation**: Interactive visual remote in the settings app that lights up buttons as you press them on the physical remote.
 
----
+## Quick Start
 
-## Quick Start & Management
-
-### Using the Management CLI (`chromecast-ctl` / `manage.sh`)
-
-Install or update the entire system:
+Install or update the system:
 ```bash
-./manage.sh install
-```
-
-Check system status (services, Bluetooth connectivity, uinput permissions):
-```bash
-./manage.sh status
-```
-
-Service controls:
-```bash
-./manage.sh restart    # Restart all services
-./manage.sh stop       # Stop all services
-./manage.sh start      # Start all services
-./manage.sh logs       # Stream combined journalctl logs
+just install
 ```
 
 Launch the Settings GUI:
 ```bash
-chromecast-settings
+just run
+# or
+pilot
 ```
-Or run directly from source:
+
+Check system status (services, Bluetooth connectivity, permissions):
 ```bash
-cargo run --release
+just status
 ```
 
----
-
-## Configuration
-
-Settings are saved in `~/.config/chromecast-remote/config.toml` (with a local `config.toml` dev fallback).
-
-Key configurations:
-- **`[device]`**: Remote name pattern, exclusive grab, poll interval.
-- **`[mouse]`**: Base speed, max speed, acceleration curve, poll rate, scroll steps.
-- **`[voice]`**: Whisper model size (`tiny`, `base`, `small`, `medium.en`), compute type (`float16`, `int8`), auto-spacing.
-- **`[mode.media]` / `[mode.mouse]`**: Per-button bindings supporting single-key, multi-key combinations, shell commands, or built-in actions.
+For full setup instructions, see the [Installation Guide](docs/INSTALL.md).

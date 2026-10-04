@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.magnotec.Pilot</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Pilot</name>
+  <summary>Configure and control Linux with your Chromecast remote and voice dictation</summary>
+  <description>
+    <p>
+      Pilot is a native GTK4 and Libadwaita settings application and hardware daemon suite designed for the Chromecast with Google TV voice remote over Bluetooth.
+    </p>
+    <p>
+      Features include:
+    </p>
+    <ul>
+      <li>Media Mode: Dedicated volume, scrubbing, play/pause, fullscreen, and app triggers</li>
+      <li>Mouse Mode: Smooth mouse movement with exponential acceleration curves using the D-Pad</li>
+      <li>Whisper Voice Dictation: Push-to-talk voice transcription via faster-whisper</li>
+      <li>Bedtime Controls: Quick display blanking and suspend timers</li>
+      <li>Live Testing: Real-time visual feedback for remote button presses and battery status</li>
+    </ul>
+  </description>
+  <developer id="io.github.magnotec">
+    <name>magnotec</name>
+  </developer>
+  <url type="homepage">https://github.com/irelandqlan/pilot</url>
+  <url type="bugtracker">https://github.com/irelandqlan/pilot/issues</url>
+  <launchable type="desktop-id">io.github.magnotec.Pilot.desktop</launchable>
+  <provides>
+    <binary>pilot</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-10-04" />
+  </releases>
+  <content_rating type="oars-1.1" />
+</component>

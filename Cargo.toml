@@ -1,7 +1,12 @@
 [package]
-name = "chromecast-settings"
+name = "pilot"
 version = "0.1.0"
 edition = "2021"
+authors = ["irelandqlan", "magnotec"]
+description = "Native Linux settings application and controller daemon suite for Chromecast Voice Remotes"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/irelandqlan/pilot"
 
 [dependencies]
 adw = { package = "libadwaita", version = "0.7", features = ["v1_6"] }

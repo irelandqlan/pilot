@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+
+    steps:
+      - name: Install System Dependencies
+        run: |
+          dnf install -y git gcc pkgconf-pkg-config openssl-devel gtk4-devel libadwaita-devel cargo rust
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure Git Safe Directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Cache Rust Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Tests
+        run: cargo test

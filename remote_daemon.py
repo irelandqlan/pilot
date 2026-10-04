@@ -27,15 +27,20 @@ logging.basicConfig(
 logger = logging.getLogger("ChromecastRemote")
 
 def get_config_path() -> Path:
+    if "PILOT_CONFIG" in os.environ:
+        return Path(os.environ["PILOT_CONFIG"])
     if "CHROMECAST_REMOTE_CONFIG" in os.environ:
         return Path(os.environ["CHROMECAST_REMOTE_CONFIG"])
+    pilot_cfg = Path.home() / ".config" / "pilot" / "config.toml"
+    if pilot_cfg.exists():
+        return pilot_cfg
     user_cfg = Path.home() / ".config" / "chromecast-remote" / "config.toml"
     if user_cfg.exists():
         return user_cfg
     dev_cfg = Path(__file__).parent / "config.toml"
     if dev_cfg.exists():
         return dev_cfg
-    return user_cfg
+    return pilot_cfg if (Path.home() / ".config" / "pilot").exists() else user_cfg
 
 CONFIG_FILE = get_config_path()
 
@@ -272,14 +277,15 @@ class RemoteDaemon:
 
     def broadcast_key_event(self, key_name: str, state: int):
         """Sends key event to UI live preview socket if active."""
-        try:
-            sock_path = f"/run/user/{os.getuid()}/chromecast_remote_ui.sock"
-            if os.path.exists(sock_path):
-                import socket
-                with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
-                    s.sendto(f"{key_name}:{state}".encode("utf-8"), sock_path)
-        except Exception:
-            pass
+        for name in ("pilot_ui.sock", "chromecast_remote_ui.sock"):
+            try:
+                sock_path = f"/run/user/{os.getuid()}/{name}"
+                if os.path.exists(sock_path):
+                    import socket
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+                        s.sendto(f"{key_name}:{state}".encode("utf-8"), sock_path)
+            except Exception:
+                pass
 
     def handle_event(self, event):
         """Process an input event from the remote."""
@@ -304,8 +310,11 @@ class RemoteDaemon:
             self.broadcast_key_event(k, state)
 
         # Check if testing mode is active (actions disabled for live UI testing)
-        test_mode_file = f"/run/user/{os.getuid()}/chromecast_remote_test_mode"
-        if os.path.exists(test_mode_file):
+        test_mode_files = [
+            f"/run/user/{os.getuid()}/pilot_test_mode",
+            f"/run/user/{os.getuid()}/chromecast_remote_test_mode",
+        ]
+        if any(os.path.exists(f) for f in test_mode_files):
             if state == 1:
                 logger.info(f"Test mode active: ignored action for {key_names}")
             return

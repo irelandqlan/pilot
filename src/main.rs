@@ -66,18 +66,31 @@ pub struct VoiceConfig {
 }
 
 fn get_config_path() -> PathBuf {
+    if let Ok(val) = std::env::var("PILOT_CONFIG") {
+        return PathBuf::from(val);
+    }
     if let Ok(val) = std::env::var("CHROMECAST_REMOTE_CONFIG") {
         return PathBuf::from(val);
     }
-    let user_cfg = glib::user_config_dir().join("chromecast-remote").join("config.toml");
-    if user_cfg.exists() {
-        return user_cfg;
+    let pilot_cfg = glib::user_config_dir().join("pilot").join("config.toml");
+    if pilot_cfg.exists() {
+        return pilot_cfg;
     }
-    let dev_cfg = PathBuf::from("/home/magnotec/Projects/desktop/chromecast-remote/config.toml");
+    let legacy_cfg = glib::user_config_dir().join("chromecast-remote").join("config.toml");
+    if legacy_cfg.exists() {
+        return legacy_cfg;
+    }
+    let dev_cfg = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/config.toml"));
     if dev_cfg.exists() {
         return dev_cfg;
     }
-    user_cfg
+    if glib::user_config_dir().join("pilot").exists() {
+        pilot_cfg
+    } else if glib::user_config_dir().join("chromecast-remote").exists() {
+        legacy_cfg
+    } else {
+        pilot_cfg
+    }
 }
 
 fn load_config() -> Result<AppConfig, String> {
@@ -366,14 +379,20 @@ pub fn set_button_actions(
 }
 
 fn main() {
+    let resources = gtk::gio::Resource::from_data(&gtk::glib::Bytes::from_static(include_bytes!(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/data/resources.gresource")
+    )))
+    .expect("Failed to load GResource bundle");
+    gtk::gio::resources_register(&resources);
+
     let app = adw::Application::builder()
-        .application_id("com.chromecast.Settings")
+        .application_id("io.github.magnotec.Pilot")
         .build();
 
     app.connect_startup(|_| {
         if let Some(display) = gtk::gdk::Display::default() {
             let theme = gtk::IconTheme::for_display(&display);
-            theme.add_search_path("/home/magnotec/Projects/desktop/chromecast-remote/data/icons");
+            theme.add_resource_path("/io/github/magnotec/Pilot/icons");
             theme.add_search_path("/home/magnotec/.local/share/chromecast-remote/icons");
             theme.add_search_path("/home/magnotec/.local/share/icons/hicolor/scalable/actions");
         }
@@ -495,7 +514,7 @@ fn build_ui(app: &adw::Application) {
     // Main Window
     let window = adw::ApplicationWindow::builder()
         .application(app)
-        .title("Chromecast Remote")
+        .title("Pilot")
         .default_width(860)
         .default_height(720)
         .width_request(365)
@@ -542,7 +561,7 @@ fn build_ui(app: &adw::Application) {
     let menu = gtk::gio::Menu::new();
     menu.append(Some("Restart Daemons"), Some("win.restart_daemons"));
     let section = gtk::gio::Menu::new();
-    section.append(Some("About Chromecast Remote"), Some("win.about"));
+    section.append(Some("About Pilot"), Some("win.about"));
     menu.append_section(None, &section);
 
     let menu_btn = gtk::MenuButton::builder()
@@ -568,11 +587,14 @@ fn build_ui(app: &adw::Application) {
     let act_about = gtk::gio::SimpleAction::new("about", None);
     act_about.connect_activate(move |_, _| {
         let about = adw::AboutDialog::builder()
-            .application_name("Chromecast Remote Settings")
+            .application_name("Pilot")
+            .application_icon("io.github.magnotec.Pilot")
             .developer_name("magnotec")
-            .version("1.0.0")
+            .version(env!("CARGO_PKG_VERSION"))
             .comments("Configure and customize your Bluetooth Chromecast remote for PC control and voice dictation on Linux.")
             .license_type(gtk::License::MitX11)
+            .website("https://github.com/irelandqlan/pilot")
+            .issue_url("https://github.com/irelandqlan/pilot/issues")
             .build();
         about.present(Some(&win_ref_about));
     });
@@ -638,7 +660,7 @@ fn build_ui(app: &adw::Application) {
     sidebar_scroll.set_propagate_natural_width(true);
     sidebar_toolbar.set_content(Some(&sidebar_scroll));
 
-    let sidebar_page = adw::NavigationPage::new(&sidebar_toolbar, "Chromecast");
+    let sidebar_page = adw::NavigationPage::new(&sidebar_toolbar, "Pilot");
     split_view.set_sidebar(Some(&sidebar_page));
 
     // Content:
@@ -2059,3 +2081,136 @@ fn build_ui(app: &adw::Application) {
     set_test_mode_active(false);
     window.present();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_action_label() {
+        assert_eq!(
+            format_action_label("action:play_pause"),
+            "Play / Pause Toggle"
+        );
+        assert_eq!(
+            format_action_label("exec:firefox"),
+            "Run: firefox"
+        );
+        assert_eq!(
+            format_action_label("key:KEY_ENTER"),
+            "Enter Key"
+        );
+        assert_eq!(
+            format_action_label("mouse:move_up"),
+            "Move Pointer Up (Accelerated)"
+        );
+    }
+
+    #[test]
+    fn test_button_actions_get_and_set() {
+        let mut cfg = AppConfig {
+            device: DeviceConfig {
+                enabled: true,
+                name_pattern: "Chromecast Remote".into(),
+                grab_device: true,
+                reconnect_poll_interval: 1.0,
+            },
+            general: GeneralConfig {
+                initial_mode: "media".into(),
+                long_press_threshold_sec: 0.5,
+                notifications: true,
+                sound_feedback: false,
+            },
+            mouse: MouseConfig {
+                base_speed: 10.0,
+                max_speed: 100.0,
+                acceleration: 1.5,
+                poll_rate_ms: 10,
+                scroll_step: 1,
+            },
+            voice: VoiceConfig {
+                enabled: true,
+                model: "base".into(),
+                paste_method: "clipboard".into(),
+                min_duration_sec: 0.5,
+                auto_spacing: true,
+                device: "cpu".into(),
+                compute_type: "float32".into(),
+            },
+            mode: toml::Table::new(),
+        };
+
+        // Test single tap
+        set_button_actions(
+            &mut cfg,
+            "media",
+            "KEY_SELECT",
+            Some("action:play_pause".into()),
+            None,
+            None,
+        );
+
+        let (tap, lp, dt) = get_button_actions(&cfg, "media", "KEY_SELECT");
+        assert_eq!(tap, Some("action:play_pause".into()));
+        assert_eq!(lp, None);
+        assert_eq!(dt, None);
+
+        // Test multi-action (tap + long_press)
+        set_button_actions(
+            &mut cfg,
+            "media",
+            "KEY_SELECT",
+            Some("action:play_pause".into()),
+            Some("action:toggle_mode".into()),
+            None,
+        );
+
+        let (tap, lp, dt) = get_button_actions(&cfg, "media", "KEY_SELECT");
+        assert_eq!(tap, Some("action:play_pause".into()));
+        assert_eq!(lp, Some("action:toggle_mode".into()));
+        assert_eq!(dt, None);
+    }
+
+    #[test]
+    fn test_config_serialization() {
+        let toml_str = r#"
+[device]
+enabled = true
+name_pattern = "Chromecast Remote"
+grab_device = true
+reconnect_poll_interval = 1.0
+
+[general]
+initial_mode = "media"
+long_press_threshold_sec = 0.5
+notifications = true
+sound_feedback = false
+
+[mouse]
+base_speed = 10.0
+max_speed = 100.0
+acceleration = 1.5
+poll_rate_ms = 10
+scroll_step = 1
+
+[voice]
+enabled = true
+model = "base"
+paste_method = "clipboard"
+min_duration_sec = 0.5
+auto_spacing = true
+device = "cpu"
+compute_type = "float32"
+
+[mode.media]
+KEY_SELECT = "action:play_pause"
+"#;
+
+        let cfg: AppConfig = toml::from_str(toml_str).expect("Failed to deserialize test config");
+        assert!(cfg.device.enabled);
+        assert_eq!(cfg.general.initial_mode, "media");
+        let (tap, _, _) = get_button_actions(&cfg, "media", "KEY_SELECT");
+        assert_eq!(tap, Some("action:play_pause".into()));
+    }
+}
+

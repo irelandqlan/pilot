@@ -30,7 +30,7 @@ INSTALL_ICONS="$HOME/.local/share/icons/hicolor/scalable/apps"
 SERVICES=("chromecast-remote.service" "chromecast-voice.service" "atvvoice.service")
 
 print_banner() {
-    echo -e "${BLUE}${BOLD}=== Chromecast PC Remote Management ===${RESET}"
+    echo -e "${BLUE}${BOLD}=== Pilot - Chromecast PC Remote Management ===${RESET}"
 }
 
 resolve_unit_name() {
@@ -45,18 +45,23 @@ resolve_unit_name() {
 
 cmd_install() {
     print_banner
-    echo -e "${CYAN}Installing Chromecast Remote system...${RESET}\n"
+    echo -e "${CYAN}Installing Pilot system...${RESET}\n"
 
     mkdir -p "$INSTALL_BIN" "$INSTALL_SHARE" "$INSTALL_CONFIG" "$INSTALL_SYSTEMD" "$INSTALL_APPS" "$INSTALL_ICONS"
 
     # 1. Build Rust Settings GUI
-    echo -e "${BOLD}[1/6] Compiling Settings Application (Rust)...${RESET}"
+    echo -e "${BOLD}[1/6] Compiling Pilot Settings Application (Rust)...${RESET}"
     if [ -d "$RUST_SRC" ]; then
         (cd "$RUST_SRC" && cargo build --release)
         # Avoid ETXTBSY if binary is running by removing destination first
-        rm -f "$INSTALL_BIN/chromecast-settings"
-        install -m 755 "$RUST_SRC/target/release/chromecast-settings" "$INSTALL_BIN/chromecast-settings"
-        echo -e "  ${GREEN}✓ Installed ${INSTALL_BIN}/chromecast-settings${RESET}"
+        rm -f "$INSTALL_BIN/pilot" "$INSTALL_BIN/chromecast-settings"
+        if [ -f "$RUST_SRC/target/release/pilot" ]; then
+            install -m 755 "$RUST_SRC/target/release/pilot" "$INSTALL_BIN/pilot"
+        elif [ -f "$RUST_SRC/target/release/chromecast-settings" ]; then
+            install -m 755 "$RUST_SRC/target/release/chromecast-settings" "$INSTALL_BIN/pilot"
+        fi
+        ln -sfn "$INSTALL_BIN/pilot" "$INSTALL_BIN/chromecast-settings"
+        echo -e "  ${GREEN}✓ Installed ${INSTALL_BIN}/pilot (and legacy link chromecast-settings)${RESET}"
     else
         echo -e "  ${YELLOW}! Rust source directory not found, skipping GUI compilation${RESET}"
     fi
@@ -93,9 +98,13 @@ cmd_install() {
 
     # 4. Desktop Entry & Icon
     echo -e "\n${BOLD}[4/6] Installing Desktop Launcher & Icon...${RESET}"
-    if [ -f "$RUST_SRC/data/com.chromecast.Settings.svg" ]; then
-        cp "$RUST_SRC/data/com.chromecast.Settings.svg" "$INSTALL_ICONS/"
-        echo -e "  ${GREEN}✓ Installed icon to ${INSTALL_ICONS}/com.chromecast.Settings.svg${RESET}"
+    if [ -f "$RUST_SRC/data/io.github.magnotec.Pilot.svg" ]; then
+        cp "$RUST_SRC/data/io.github.magnotec.Pilot.svg" "$INSTALL_ICONS/"
+        ln -sfn "$INSTALL_ICONS/io.github.magnotec.Pilot.svg" "$INSTALL_ICONS/com.chromecast.Settings.svg"
+        echo -e "  ${GREEN}✓ Installed icon to ${INSTALL_ICONS}/io.github.magnotec.Pilot.svg${RESET}"
+    elif [ -f "$RUST_SRC/data/com.chromecast.Settings.svg" ]; then
+        cp "$RUST_SRC/data/com.chromecast.Settings.svg" "$INSTALL_ICONS/io.github.magnotec.Pilot.svg"
+        echo -e "  ${GREEN}✓ Installed icon to ${INSTALL_ICONS}/io.github.magnotec.Pilot.svg${RESET}"
     fi
     if [ -d "$RUST_SRC/data/icons" ]; then
         mkdir -p "$INSTALL_SHARE/icons" "$HOME/.local/share/icons/hicolor/scalable/actions"
@@ -103,10 +112,10 @@ cmd_install() {
         cp -r "$RUST_SRC/data/icons/." "$HOME/.local/share/icons/hicolor/scalable/actions/" 2>/dev/null || true
         echo -e "  ${GREEN}✓ Installed symbolic action icons${RESET}"
     fi
-    if [ -f "$RUST_SRC/data/com.chromecast.Settings.desktop" ]; then
-        cp "$RUST_SRC/data/com.chromecast.Settings.desktop" "$INSTALL_APPS/"
+    if [ -f "$RUST_SRC/data/io.github.magnotec.Pilot.desktop" ]; then
+        cp "$RUST_SRC/data/io.github.magnotec.Pilot.desktop" "$INSTALL_APPS/"
         command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$INSTALL_APPS" 2>/dev/null || true
-        echo -e "  ${GREEN}✓ Registered GNOME desktop entry${RESET}"
+        echo -e "  ${GREEN}✓ Registered GNOME desktop entry (io.github.magnotec.Pilot.desktop)${RESET}"
     fi
 
     # 5. Systemd User Services
@@ -170,19 +179,20 @@ EOF
     systemctl --user daemon-reload
     echo -e "  ${GREEN}✓ Systemd units installed and daemon reloaded${RESET}"
 
-    # 6. Global CLI Wrapper (chromecast-ctl)
-    echo -e "\n${BOLD}[6/6] Installing CLI management utility (chromecast-ctl)...${RESET}"
-    ln -sfn "$SCRIPT_DIR/manage.sh" "$INSTALL_BIN/chromecast-ctl"
-    echo -e "  ${GREEN}✓ Linked ${INSTALL_BIN}/chromecast-ctl${RESET}"
+    # 6. Global CLI Wrapper (pilot-ctl)
+    echo -e "\n${BOLD}[6/6] Installing CLI management utility (pilot-ctl)...${RESET}"
+    ln -sfn "$SCRIPT_DIR/manage.sh" "$INSTALL_BIN/pilot-ctl"
+    ln -sfn "$INSTALL_BIN/pilot-ctl" "$INSTALL_BIN/chromecast-ctl"
+    echo -e "  ${GREEN}✓ Linked ${INSTALL_BIN}/pilot-ctl (and legacy link chromecast-ctl)${RESET}"
 
     echo -e "\n${GREEN}${BOLD}Installation Complete!${RESET}"
-    echo -e "Start services now with: ${CYAN}chromecast-ctl start${RESET} or ${CYAN}./manage.sh start${RESET}"
-    echo -e "Open Settings app with:   ${CYAN}chromecast-settings${RESET}"
+    echo -e "Start services now with: ${CYAN}pilot-ctl start${RESET} or ${CYAN}./manage.sh start${RESET}"
+    echo -e "Open Settings app with:   ${CYAN}pilot${RESET}"
 }
 
 cmd_uninstall() {
     print_banner
-    echo -e "${RED}Uninstalling Chromecast Remote...${RESET}\n"
+    echo -e "${RED}Uninstalling Pilot...${RESET}\n"
 
     echo "Stopping and disabling systemd services..."
     systemctl --user stop "${SERVICES[@]}" 2>/dev/null || true
@@ -195,10 +205,10 @@ cmd_uninstall() {
     systemctl --user daemon-reload
 
     echo "Removing binaries and desktop entries..."
-    rm -f "$INSTALL_BIN/chromecast-settings"
-    rm -f "$INSTALL_BIN/chromecast-ctl"
-    rm -f "$INSTALL_APPS/com.chromecast.Settings.desktop"
-    rm -f "$INSTALL_ICONS/com.chromecast.Settings.svg"
+    rm -f "$INSTALL_BIN/pilot" "$INSTALL_BIN/chromecast-settings"
+    rm -f "$INSTALL_BIN/pilot-ctl" "$INSTALL_BIN/chromecast-ctl"
+    rm -f "$INSTALL_APPS/io.github.magnotec.Pilot.desktop" "$INSTALL_APPS/com.chromecast.Settings.desktop"
+    rm -f "$INSTALL_ICONS/io.github.magnotec.Pilot.svg" "$INSTALL_ICONS/com.chromecast.Settings.svg"
     rm -rf "$INSTALL_SHARE"
 
     if [ -d "$INSTALL_CONFIG" ]; then
