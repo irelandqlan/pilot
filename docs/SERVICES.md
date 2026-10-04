@@ -42,7 +42,7 @@ Pilot features an integrated, unified architecture. Rather than relying on fragi
 
 ## GNOME Shell "Background Apps" Integration
 
-When running as a Flatpak (`io.github.magnotec.Pilot`), Pilot registers with the `xdg-desktop-portal` background monitor (`org.freedesktop.portal.Background`).
+When running as a Flatpak (`io.github.irelandqlan.Pilot`), Pilot registers with the `xdg-desktop-portal` background monitor (`org.freedesktop.portal.Background`).
 
 - Closing the Settings window hides the GUI, keeping the remote engine and audio workers active in the background.
 - Pilot appears in GNOME Quick Settings under **Background Apps**.

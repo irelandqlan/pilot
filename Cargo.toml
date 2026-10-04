@@ -2,7 +2,7 @@
 name = "pilot"
 version = "0.1.0"
 edition = "2021"
-authors = ["irelandqlan", "magnotec"]
+authors = ["irelandqlan"]
 description = "Native Linux settings application and controller daemon suite for Chromecast Voice Remotes"
 readme = "README.md"
 license = "MIT"
@@ -12,5 +12,6 @@ repository = "https://github.com/irelandqlan/pilot"
 adw = { package = "libadwaita", version = "0.7", features = ["v1_6"] }
 evdev = "0.12"
 gtk = { package = "gtk4", version = "0.9", features = ["v4_14"] }
+libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"

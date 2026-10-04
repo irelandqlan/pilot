@@ -1,4 +1,4 @@
-app-id: io.github.magnotec.Pilot
+app-id: io.github.irelandqlan.Pilot
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
@@ -25,9 +25,11 @@ finish-args:
   - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.freedesktop.Notifications
 
-  # Configuration storage
+  # Configuration & Cache storage
   - --filesystem=xdg-config/pilot:create
   - --filesystem=xdg-config/chromecast-remote:create
+  - --filesystem=xdg-cache/huggingface:create
+  - --share=network
 
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
@@ -40,18 +42,20 @@ modules:
   - name: pilot
     buildsystem: simple
     build-commands:
+      - pip install --no-cache-dir --prefix=/app evdev faster-whisper
       - cargo build --release
       - install -Dm755 target/release/pilot /app/bin/pilot
       - ln -s pilot /app/bin/chromecast-settings
       - install -Dm755 bin/pilot-ctl /app/bin/pilot-ctl
       - ln -s pilot-ctl /app/bin/chromecast-ctl
       - install -Dm755 bin/atvvoice /app/bin/atvvoice
+      - install -Dm755 voice_daemon.py /app/libexec/pilot/voice_daemon.py
       - install -Dm644 config.toml /app/share/pilot/config.toml
-      - install -Dm644 data/io.github.magnotec.Pilot.desktop /app/share/applications/io.github.magnotec.Pilot.desktop
-      - install -Dm644 data/io.github.magnotec.Pilot.svg /app/share/icons/hicolor/scalable/apps/io.github.magnotec.Pilot.svg
+      - install -Dm644 data/io.github.irelandqlan.Pilot.desktop /app/share/applications/io.github.irelandqlan.Pilot.desktop
+      - install -Dm644 data/io.github.irelandqlan.Pilot.svg /app/share/icons/hicolor/scalable/apps/io.github.irelandqlan.Pilot.svg
       - install -d /app/share/icons/hicolor/scalable/actions
       - install -m644 data/icons/*.svg /app/share/icons/hicolor/scalable/actions/
-      - install -Dm644 data/io.github.magnotec.Pilot.metainfo.xml /app/share/metainfo/io.github.magnotec.Pilot.metainfo.xml
+      - install -Dm644 data/io.github.irelandqlan.Pilot.metainfo.xml /app/share/metainfo/io.github.irelandqlan.Pilot.metainfo.xml
     sources:
       - type: dir
         path: .

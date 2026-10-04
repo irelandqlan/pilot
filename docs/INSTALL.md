@@ -43,7 +43,7 @@ just flatpak
 # Run Pilot
 just flatpak-run
 # or
-flatpak run io.github.magnotec.Pilot
+flatpak run io.github.irelandqlan.Pilot
 ```
 
 To generate a standalone `.flatpak` bundle for offline distribution:
@@ -83,7 +83,7 @@ just status
 
 ### Flatpak
 ```bash
-flatpak uninstall io.github.magnotec.Pilot
+flatpak uninstall io.github.irelandqlan.Pilot
 ```
 
 ### RPM

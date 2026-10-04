@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
-  <gresource prefix="/io/github/magnotec/Pilot/icons/scalable/actions">
+  <gresource prefix="/io/github/irelandqlan/Pilot/icons/scalable/actions">
     <file alias="google-assistant-symbolic.svg" preprocess="xml-stripblanks">icons/google-assistant-symbolic.svg</file>
     <file alias="arrow-into-box-symbolic.svg" preprocess="xml-stripblanks">icons/arrow-into-box-symbolic.svg</file>
     <file alias="input-tv-symbolic.svg" preprocess="xml-stripblanks">icons/input-tv-symbolic.svg</file>
     <file alias="youtube-symbolic.svg" preprocess="xml-stripblanks">icons/youtube-symbolic.svg</file>
     <file alias="netflix-symbolic.svg" preprocess="xml-stripblanks">icons/netflix-symbolic.svg</file>
   </gresource>
-  <gresource prefix="/io/github/magnotec/Pilot/icons/scalable/apps">
-    <file alias="io.github.magnotec.Pilot.svg" preprocess="xml-stripblanks">io.github.magnotec.Pilot.svg</file>
+  <gresource prefix="/io/github/irelandqlan/Pilot/icons/scalable/apps">
+    <file alias="io.github.irelandqlan.Pilot.svg" preprocess="xml-stripblanks">io.github.irelandqlan.Pilot.svg</file>
   </gresource>
 </gresources>

@@ -24,11 +24,21 @@ def get_config_path() -> Path:
     if "CHROMECAST_REMOTE_CONFIG" in os.environ:
         return Path(os.environ["CHROMECAST_REMOTE_CONFIG"])
     pilot_cfg = Path.home() / ".config" / "pilot" / "config.toml"
+    legacy_cfg = Path.home() / ".config" / "chromecast-remote" / "config.toml"
+
+    # Automatically migrate legacy config to pilot
+    if not pilot_cfg.exists() and legacy_cfg.exists():
+        try:
+            pilot_cfg.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(legacy_cfg, pilot_cfg)
+            return pilot_cfg
+        except Exception:
+            pass
+
     if pilot_cfg.exists():
         return pilot_cfg
-    user_cfg = Path.home() / ".config" / "chromecast-remote" / "config.toml"
-    if user_cfg.exists():
-        return user_cfg
+    if legacy_cfg.exists():
+        return legacy_cfg
     dev_cfg = Path(__file__).parent / "config.toml"
     if dev_cfg.exists():
         return dev_cfg
@@ -40,7 +50,7 @@ def get_config_path() -> Path:
             return pilot_cfg
         except Exception:
             return sys_cfg
-    return pilot_cfg if (Path.home() / ".config" / "pilot").exists() else user_cfg
+    return pilot_cfg
 
 CONFIG_FILE = get_config_path()
 

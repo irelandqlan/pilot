@@ -1,26 +1,75 @@
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct WorkerSupervisor {
     remote_stop: Arc<AtomicBool>,
     remote_running: Arc<AtomicBool>,
+    remote_config: Arc<RwLock<crate::AppConfig>>,
     remote_child: Arc<Mutex<Option<Child>>>,
     voice_child: Arc<Mutex<Option<Child>>>,
     atv_child: Arc<Mutex<Option<Child>>>,
 }
 
+impl Default for WorkerSupervisor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkerSupervisor {
     pub fn new() -> Self {
+        let default_cfg = crate::AppConfig {
+            device: crate::DeviceConfig {
+                enabled: true,
+                name_pattern: "Chromecast Remote".into(),
+                grab_device: true,
+                reconnect_poll_interval: 1.0,
+            },
+            general: crate::GeneralConfig {
+                initial_mode: "media".into(),
+                long_press_threshold_sec: 0.5,
+                notifications: true,
+                sound_feedback: false,
+                hide_on_close: true,
+            },
+            mouse: crate::MouseConfig {
+                base_speed: 10.0,
+                max_speed: 100.0,
+                acceleration: 1.5,
+                poll_rate_ms: 10,
+                scroll_step: 1,
+            },
+            voice: crate::VoiceConfig {
+                enabled: true,
+                model: "base".into(),
+                paste_method: "clipboard".into(),
+                min_duration_sec: 0.5,
+                auto_spacing: true,
+                device: "cpu".into(),
+                compute_type: "float32".into(),
+            },
+            mode: toml::Table::new(),
+        };
+
+        let initial_cfg = crate::load_config().unwrap_or(default_cfg);
+
         Self {
             remote_stop: Arc::new(AtomicBool::new(false)),
             remote_running: Arc::new(AtomicBool::new(false)),
+            remote_config: Arc::new(RwLock::new(initial_cfg)),
             remote_child: Arc::new(Mutex::new(None)),
             voice_child: Arc::new(Mutex::new(None)),
             atv_child: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn update_config(&self, cfg: crate::AppConfig) {
+        if let Ok(mut lock) = self.remote_config.write() {
+            *lock = cfg;
         }
     }
 
@@ -146,23 +195,20 @@ impl WorkerSupervisor {
         // Stop legacy systemd unit if active to avoid EVIOCGRAB conflict
         stop_systemd_unit_if_active(&["pilot-remote.service", "chromecast-remote.service"]);
 
-        let cfg = match crate::load_config() {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[Supervisor] Failed to load config for remote: {}", e);
-                return false;
-            }
-        };
+        if let Ok(c) = crate::load_config() {
+            self.update_config(c);
+        }
 
         self.remote_stop.store(false, Ordering::SeqCst);
         self.remote_running.store(true, Ordering::SeqCst);
 
         let stop_flag = self.remote_stop.clone();
         let running_flag = self.remote_running.clone();
+        let config_arc = self.remote_config.clone();
 
         eprintln!("[Supervisor] Starting native Rust remote engine thread...");
         std::thread::spawn(move || {
-            if let Err(e) = crate::remote::run_remote_controller(stop_flag, cfg) {
+            if let Err(e) = crate::remote::run_remote_controller(stop_flag, config_arc) {
                 eprintln!("[Supervisor] Remote controller error: {}", e);
             }
             running_flag.store(false, Ordering::SeqCst);

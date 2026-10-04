@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.magnotec.Pilot</id>
+  <id>io.github.irelandqlan.Pilot</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>Pilot</name>
@@ -20,12 +20,12 @@
       <li>Live Testing: Real-time visual feedback for remote button presses and battery status</li>
     </ul>
   </description>
-  <developer id="io.github.magnotec">
-    <name>magnotec</name>
+  <developer id="io.github.irelandqlan">
+    <name>irelandqlan</name>
   </developer>
   <url type="homepage">https://github.com/irelandqlan/pilot</url>
   <url type="bugtracker">https://github.com/irelandqlan/pilot/issues</url>
-  <launchable type="desktop-id">io.github.magnotec.Pilot.desktop</launchable>
+  <launchable type="desktop-id">io.github.irelandqlan.Pilot.desktop</launchable>
   <provides>
     <binary>pilot</binary>
   </provides>

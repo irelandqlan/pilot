@@ -99,10 +99,26 @@ fn get_config_path() -> PathBuf {
         return PathBuf::from(val);
     }
     let pilot_cfg = glib::user_config_dir().join("pilot").join("config.toml");
+    let legacy_cfg = glib::user_config_dir().join("chromecast-remote").join("config.toml");
+
+    // Automatically migrate legacy ~/.config/chromecast-remote/config.toml to ~/.config/pilot/config.toml
+    if !pilot_cfg.exists() && legacy_cfg.exists() {
+        if let Some(parent) = pilot_cfg.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Ok(_) = fs::copy(&legacy_cfg, &pilot_cfg) {
+            eprintln!(
+                "[Config] Migrated legacy config from {} to {}",
+                legacy_cfg.display(),
+                pilot_cfg.display()
+            );
+            return pilot_cfg;
+        }
+    }
+
     if pilot_cfg.exists() {
         return pilot_cfg;
     }
-    let legacy_cfg = glib::user_config_dir().join("chromecast-remote").join("config.toml");
     if legacy_cfg.exists() {
         return legacy_cfg;
     }
@@ -110,13 +126,7 @@ fn get_config_path() -> PathBuf {
     if dev_cfg.exists() {
         return dev_cfg;
     }
-    if glib::user_config_dir().join("pilot").exists() {
-        pilot_cfg
-    } else if glib::user_config_dir().join("chromecast-remote").exists() {
-        legacy_cfg
-    } else {
-        pilot_cfg
-    }
+    pilot_cfg
 }
 
 fn load_config() -> Result<AppConfig, String> {
@@ -447,7 +457,7 @@ fn main() {
     }
 
     let app = adw::Application::builder()
-        .application_id("io.github.magnotec.Pilot")
+        .application_id("io.github.irelandqlan.Pilot")
         .build();
 
     let supervisor_shutdown = supervisor.clone();
@@ -458,7 +468,7 @@ fn main() {
     app.connect_startup(|_| {
         if let Some(display) = gtk::gdk::Display::default() {
             let theme = gtk::IconTheme::for_display(&display);
-            theme.add_resource_path("/io/github/magnotec/Pilot/icons");
+            theme.add_resource_path("/io/github/irelandqlan/Pilot/icons");
             theme.add_search_path("/app/share/icons/hicolor/scalable/actions");
             theme.add_search_path("/app/share/pilot/icons");
             theme.add_search_path("/usr/share/icons/hicolor/scalable/actions");
@@ -708,8 +718,8 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
     act_about.connect_activate(move |_, _| {
         let about = adw::AboutDialog::builder()
             .application_name("Pilot")
-            .application_icon("io.github.magnotec.Pilot")
-            .developer_name("magnotec")
+            .application_icon("io.github.irelandqlan.Pilot")
+            .developer_name("irelandqlan")
             .version(env!("CARGO_PKG_VERSION"))
             .comments("Configure and customize your Bluetooth Chromecast remote for PC control and voice dictation on Linux.")
             .license_type(gtk::License::MitX11)
@@ -2539,6 +2549,7 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
             Ok(_) => {
                 *saved_config_clone.borrow_mut() = cfg.clone();
                 check_changes_clone();
+                sup_save.update_config(cfg.clone());
                 sup_save.restart_all(cfg.device.enabled, cfg.voice.enabled);
                 let toast = adw::Toast::new("Configuration saved and services restarted");
                 toast.set_timeout(3);

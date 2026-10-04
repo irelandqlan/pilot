@@ -24,11 +24,11 @@ build-release:
 
 # Build and install Flatpak package locally
 flatpak:
-    flatpak-builder --force-clean --user --install build/flatpak io.github.magnotec.Pilot.yml
+    flatpak-builder --force-clean --user --install build/flatpak io.github.irelandqlan.Pilot.yml
 
 # Run the installed Flatpak application
 flatpak-run:
-    flatpak run io.github.magnotec.Pilot
+    flatpak run io.github.irelandqlan.Pilot
 
 # Build standalone Flatpak bundle (.flatpak file in dist/)
 flatpak-bundle:
@@ -37,9 +37,9 @@ flatpak-bundle:
     VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
     mkdir -p dist build/flatpak-repo
     echo "==> Building Flatpak ostree repository..."
-    flatpak-builder --force-clean --repo=build/flatpak-repo build/flatpak io.github.magnotec.Pilot.yml
+    flatpak-builder --force-clean --repo=build/flatpak-repo build/flatpak io.github.irelandqlan.Pilot.yml
     echo "==> Creating standalone bundle dist/pilot-v${VERSION}.flatpak..."
-    flatpak build-bundle build/flatpak-repo "dist/pilot-v${VERSION}.flatpak" io.github.magnotec.Pilot master
+    flatpak build-bundle build/flatpak-repo "dist/pilot-v${VERSION}.flatpak" io.github.irelandqlan.Pilot master
     echo "✅ Flatpak bundle ready at dist/pilot-v${VERSION}.flatpak"
 
 # Build Fedora RPM package into dist/
@@ -172,7 +172,7 @@ release version:
     cargo check --quiet
 
     TODAY=$(date +%Y-%m-%d)
-    METAINFO="data/io.github.magnotec.Pilot.metainfo.xml"
+    METAINFO="data/io.github.irelandqlan.Pilot.metainfo.xml"
     if [ -f "$METAINFO" ] && grep -q "<releases>" "$METAINFO"; then
         sed -i -E "s|<releases>|<releases>\n    <release version=\"{{version}}\" date=\"$TODAY\" />|" "$METAINFO"
     fi

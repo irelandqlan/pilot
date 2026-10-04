@@ -2,7 +2,7 @@
 Name=Pilot
 Comment=Configure Chromecast Bluetooth remote PC control and voice dictation
 Exec=pilot
-Icon=io.github.magnotec.Pilot
+Icon=io.github.irelandqlan.Pilot
 Terminal=false
 Type=Application
 Categories=Settings;HardwareSettings;GTK;GNOME;Utility;

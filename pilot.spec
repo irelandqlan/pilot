@@ -71,10 +71,10 @@ install -m 644 data/pilot.service %{buildroot}%{_userunitdir}/pilot.service
 install -m 644 data/70-pilot-uinput.rules %{buildroot}%{_udevrulesdir}/70-pilot-uinput.rules
 
 # Desktop launcher, icon, symbolic actions, and AppStream metainfo
-install -m 644 data/io.github.magnotec.Pilot.desktop %{buildroot}%{_datadir}/applications/io.github.magnotec.Pilot.desktop
-install -m 644 data/io.github.magnotec.Pilot.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.magnotec.Pilot.svg
+install -m 644 data/io.github.irelandqlan.Pilot.desktop %{buildroot}%{_datadir}/applications/io.github.irelandqlan.Pilot.desktop
+install -m 644 data/io.github.irelandqlan.Pilot.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.irelandqlan.Pilot.svg
 install -m 644 data/icons/*.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/actions/
-install -m 644 data/io.github.magnotec.Pilot.metainfo.xml %{buildroot}%{_metainfodir}/io.github.magnotec.Pilot.metainfo.xml
+install -m 644 data/io.github.irelandqlan.Pilot.metainfo.xml %{buildroot}%{_metainfodir}/io.github.irelandqlan.Pilot.metainfo.xml
 
 %post
 udevadm control --reload-rules 2>/dev/null || :
@@ -95,8 +95,8 @@ udevadm trigger --subsystem-match=misc 2>/dev/null || :
 %{_libexecdir}/pilot/
 %{_userunitdir}/pilot.service
 %{_udevrulesdir}/70-pilot-uinput.rules
-%{_datadir}/applications/io.github.magnotec.Pilot.desktop
-%{_datadir}/icons/hicolor/scalable/apps/io.github.magnotec.Pilot.svg
+%{_datadir}/applications/io.github.irelandqlan.Pilot.desktop
+%{_datadir}/icons/hicolor/scalable/apps/io.github.irelandqlan.Pilot.svg
 %{_datadir}/icons/hicolor/scalable/actions/*.svg
-%{_metainfodir}/io.github.magnotec.Pilot.metainfo.xml
+%{_metainfodir}/io.github.irelandqlan.Pilot.metainfo.xml
 %{_datadir}/pilot/config.toml

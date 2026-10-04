@@ -8,7 +8,7 @@ Welcome to developing **Pilot**.
 pilot/
 ├── Cargo.toml / Cargo.lock       # Rust build specification
 ├── Justfile                      # Command runner for development and release workflows
-├── io.github.magnotec.Pilot.yml  # Flatpak application manifest
+├── io.github.irelandqlan.Pilot.yml  # Flatpak application manifest
 ├── pilot.spec                    # Fedora / RHEL RPM package spec
 ├── config.toml                   # Master default configuration file
 ├── src/                          # Native Rust GUI & Remote Controller Engine
@@ -18,9 +18,9 @@ pilot/
 ├── data/                         # GResource bundle, icons, udev rule, & .desktop launcher
 │   ├── resources.gresource.xml   # GResource manifest for bundled SVGs
 │   ├── 70-pilot-uinput.rules     # Udev permission rule for /dev/uinput
-│   ├── io.github.magnotec.Pilot.svg
-│   ├── io.github.magnotec.Pilot.desktop
-│   ├── io.github.magnotec.Pilot.metainfo.xml
+│   ├── io.github.irelandqlan.Pilot.svg
+│   ├── io.github.irelandqlan.Pilot.desktop
+│   ├── io.github.irelandqlan.Pilot.metainfo.xml
 │   └── icons/                    # Symbolic action icons
 ├── bin/                          # Native binaries & CLI management
 │   ├── atvvoice                  # C/C++ BLE GATT microphone capture daemon

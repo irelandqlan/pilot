@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="data/io.github.magnotec.Pilot.svg" width="120" height="120" alt="Pilot Logo">
+  <img src="data/io.github.irelandqlan.Pilot.svg" width="120" height="120" alt="Pilot Logo">
 
   # Pilot
 
@@ -63,7 +63,7 @@ just flatpak-bundle
 ```
 Run with:
 ```bash
-flatpak run io.github.magnotec.Pilot
+flatpak run io.github.irelandqlan.Pilot
 # or via command runner
 just flatpak-run
 ```

@@ -63,8 +63,8 @@ cmd_status() {
     if is_service_active "pilot.service"; then
         pid=$(systemctl --user show --property MainPID --value "pilot.service" 2>/dev/null || echo "?")
         echo -e "  ${GREEN}●${RESET} ${BOLD}pilot.service${RESET}: ${GREEN}Active${RESET} (PID: $pid)"
-    elif pgrep -f "io.github.magnotec.Pilot" >/dev/null 2>&1; then
-        pid=$(pgrep -f "io.github.magnotec.Pilot" | head -n1)
+    elif pgrep -f "io.github.irelandqlan.Pilot" >/dev/null 2>&1; then
+        pid=$(pgrep -f "io.github.irelandqlan.Pilot" | head -n1)
         echo -e "  ${GREEN}●${RESET} ${BOLD}Pilot (Flatpak)${RESET}: ${GREEN}Running${RESET} (PID: $pid)"
     elif pgrep -x "pilot" >/dev/null 2>&1; then
         pid=$(pgrep -x "pilot" | head -n1)
@@ -123,8 +123,8 @@ cmd_start() {
     echo -e "${CYAN}Starting Pilot...${RESET}"
     if systemctl --user is-enabled pilot.service >/dev/null 2>&1 || [ -f "$HOME/.config/systemd/user/pilot.service" ]; then
         systemctl --user start pilot.service
-    elif command -v flatpak >/dev/null 2>&1 && flatpak list --app | grep -q "io.github.magnotec.Pilot"; then
-        flatpak run io.github.magnotec.Pilot >/dev/null 2>&1 &
+    elif command -v flatpak >/dev/null 2>&1 && flatpak list --app | grep -q "io.github.irelandqlan.Pilot"; then
+        flatpak run io.github.irelandqlan.Pilot >/dev/null 2>&1 &
     elif command -v pilot >/dev/null 2>&1; then
         pilot >/dev/null 2>&1 &
     fi
@@ -135,7 +135,7 @@ cmd_start() {
 cmd_stop() {
     echo -e "${YELLOW}Stopping Pilot and workers...${RESET}"
     systemctl --user stop pilot.service pilot-remote.service pilot-voice.service atvvoice.service 2>/dev/null || true
-    pkill -f "io.github.magnotec.Pilot" 2>/dev/null || true
+    pkill -f "io.github.irelandqlan.Pilot" 2>/dev/null || true
     pkill -x "pilot" 2>/dev/null || true
     pkill -x "atvvoice" 2>/dev/null || true
     pkill -f "voice_daemon.py" 2>/dev/null || true
