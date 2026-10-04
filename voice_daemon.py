@@ -183,11 +183,24 @@ class VoiceDaemon:
             logger.info(f"Loading Whisper model '{self.model_name}' on {self.device} ({self.compute_type})...")
             from faster_whisper import WhisperModel
             t0 = time.time()
-            if self.device == "cuda":
-                self.model = WhisperModel(self.model_name, device="cuda", compute_type=self.compute_type)
-            else:
-                self.model = WhisperModel(self.model_name, device="cpu", compute_type=self.compute_type, cpu_threads=6)
-            logger.info(f"Whisper model successfully loaded in {time.time() - t0:.2f}s.")
+
+            def _init(local_only: bool):
+                kwargs = {
+                    "device": self.device,
+                    "compute_type": self.compute_type,
+                    "local_files_only": local_only,
+                }
+                if self.device != "cuda":
+                    kwargs["cpu_threads"] = 6
+                return WhisperModel(self.model_name, **kwargs)
+
+            try:
+                self.model = _init(local_only=True)
+                logger.info(f"Loaded cached Whisper model '{self.model_name}' in {time.time() - t0:.2f}s.")
+            except Exception:
+                logger.info(f"Model '{self.model_name}' not found in local cache; downloading...")
+                self.model = _init(local_only=False)
+                logger.info(f"Downloaded and loaded Whisper model in {time.time() - t0:.2f}s.")
         except Exception as e:
             self.model_load_error = str(e)
             logger.error(f"Failed to load Whisper model: {e}")

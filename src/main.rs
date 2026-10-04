@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
-use std::process::Command;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -1318,40 +1317,7 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
     group_voice.add(&spacing_row);
     group_voice.add(&min_dur_row);
 
-    // D-Bus Integration Test Group
-    let group_dbus = adw::PreferencesGroup::builder()
-        .title("Desktop Dictation D-Bus Service")
-        .description("Test trigger voice typing from desktop without remote")
-        .build();
-
-    let test_row = adw::ActionRow::builder()
-        .title("Trigger Dictation (Toggle)")
-        .subtitle("Calls org.local.Dictation.Toggle via session bus")
-        .build();
-
-    let test_btn = gtk::Button::builder()
-        .label("Toggle Mic")
-        .valign(gtk::Align::Center)
-        .build();
-
-    test_btn.connect_clicked(|_| {
-        let _ = Command::new("busctl")
-            .args([
-                "--user",
-                "call",
-                "org.local.Dictation",
-                "/org/local/Dictation",
-                "org.local.Dictation",
-                "Toggle",
-            ])
-            .spawn();
-    });
-
-    test_row.add_suffix(&test_btn);
-    group_dbus.add(&test_row);
-
     page_voice.add(&group_voice);
-    page_voice.add(&group_dbus);
 
     // ==========================================
     // PAGE 4: BUTTONS (Simulated Remote + Direct Edit Dialog)
@@ -1379,13 +1345,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         init_modes[0].clone()
     };
     let start_sel = init_modes.iter().position(|m| m == &start_mode).unwrap_or(0);
-
-    let layer_icon = gtk::Image::builder()
-        .icon_name("layers-symbolic")
-        .valign(gtk::Align::Center)
-        .css_classes(["dim-label"])
-        .build();
-    switcher_box.append(&layer_icon);
 
     let layer_dropdown = gtk::DropDown::builder()
         .model(&layer_model)
