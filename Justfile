@@ -24,7 +24,7 @@ build-release:
 
 # Build and install Flatpak package locally
 flatpak:
-    flatpak-builder --force-clean --user --install build/flatpak io.github.irelandqlan.Pilot.yml
+    flatpak-builder --disable-rofiles-fuse --force-clean --user --install build/flatpak io.github.irelandqlan.Pilot.yml
 
 # Run the installed Flatpak application
 flatpak-run:
@@ -37,7 +37,7 @@ flatpak-bundle:
     VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
     mkdir -p dist build/flatpak-repo
     echo "==> Building Flatpak ostree repository..."
-    flatpak-builder --force-clean --repo=build/flatpak-repo build/flatpak io.github.irelandqlan.Pilot.yml
+    flatpak-builder --disable-rofiles-fuse --force-clean --repo=build/flatpak-repo build/flatpak io.github.irelandqlan.Pilot.yml
     echo "==> Creating standalone bundle dist/pilot-v${VERSION}.flatpak..."
     flatpak build-bundle build/flatpak-repo "dist/pilot-v${VERSION}.flatpak" io.github.irelandqlan.Pilot master
     echo "✅ Flatpak bundle ready at dist/pilot-v${VERSION}.flatpak"
