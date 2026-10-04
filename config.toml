@@ -9,6 +9,7 @@ initial_mode = "media"
 long_press_threshold_sec = 0.4
 notifications = false
 sound_feedback = false
+hide_on_close = true
 
 [mouse]
 base_speed = 12.0

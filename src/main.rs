@@ -45,6 +45,29 @@ pub struct GeneralConfig {
     pub long_press_threshold_sec: f64,
     pub notifications: bool,
     pub sound_feedback: bool,
+    #[serde(default = "default_true")]
+    pub hide_on_close: bool,
+}
+
+fn request_portal_background() {
+    let _ = std::process::Command::new("busctl")
+        .args([
+            "--user",
+            "call",
+            "org.freedesktop.portal.Desktop",
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.portal.Background",
+            "RequestBackground",
+            "sa{sv}",
+            "",
+            "1",
+            "reason",
+            "s",
+            "Managing Chromecast Remote and Voice Services",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -433,12 +456,20 @@ fn main() {
             theme.add_search_path(home.join(".local/share/icons/hicolor/scalable/actions"));
         }
         load_custom_css();
+        request_portal_background();
     });
 
     let supervisor_ui = supervisor.clone();
     app.connect_activate(move |app| {
+        for win in app.windows() {
+            win.set_visible(true);
+            win.present();
+            return;
+        }
         build_ui(app, &supervisor_ui);
     });
+
+    let _app_hold = app.hold();
 
     app.run();
 }
@@ -565,6 +596,26 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         .default_height(720)
         .width_request(365)
         .build();
+
+    // Window close behavior: hide to background or quit according to configuration
+    {
+        let cfg_c = config.clone();
+        let app_c = app.clone();
+        window.connect_close_request(move |win| {
+            let hide = cfg_c
+                .try_borrow()
+                .map(|c| c.general.hide_on_close)
+                .unwrap_or(true);
+
+            if hide {
+                win.set_visible(false);
+                glib::Propagation::Stop
+            } else {
+                app_c.quit();
+                glib::Propagation::Proceed
+            }
+        });
+    }
 
     let toast_overlay = adw::ToastOverlay::new();
 
@@ -1016,10 +1067,25 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         }
     });
 
+    let hide_on_close_row = adw::SwitchRow::builder()
+        .title("Keep Running in Background")
+        .subtitle("Closing the window hides Pilot to the background apps tray instead of quitting")
+        .active(config.borrow().general.hide_on_close)
+        .build();
+    hide_on_close_row.connect_active_notify({
+        let cfg = config.clone();
+        let chk = check_changes.clone();
+        move |r| {
+            cfg.borrow_mut().general.hide_on_close = r.is_active();
+            chk();
+        }
+    });
+
     group_behavior.add(&initial_mode_row);
     group_behavior.add(&long_press_row);
     group_behavior.add(&notif_row);
     group_behavior.add(&sound_row);
+    group_behavior.add(&hide_on_close_row);
 
     // Expandable Advanced Hardware Group
     let group_advanced = adw::PreferencesGroup::new();
@@ -2536,6 +2602,7 @@ mod tests {
                 long_press_threshold_sec: 0.5,
                 notifications: true,
                 sound_feedback: false,
+                hide_on_close: true,
             },
             mouse: MouseConfig {
                 base_speed: 10.0,
@@ -2586,6 +2653,7 @@ mod tests {
                 long_press_threshold_sec: 0.5,
                 notifications: true,
                 sound_feedback: false,
+                hide_on_close: true,
             },
             mouse: MouseConfig {
                 base_speed: 10.0,
@@ -2675,6 +2743,7 @@ KEY_SELECT = "action:play_pause"
         let cfg: AppConfig = toml::from_str(toml_str).expect("Failed to deserialize test config");
         assert!(cfg.device.enabled);
         assert_eq!(cfg.general.initial_mode, "media");
+        assert!(cfg.general.hide_on_close);
         let (tap, _, _) = get_button_actions(&cfg, "media", "KEY_SELECT");
         assert_eq!(tap, Some("action:play_pause".into()));
     }
@@ -2693,6 +2762,7 @@ KEY_SELECT = "action:play_pause"
                 long_press_threshold_sec: 0.5,
                 notifications: true,
                 sound_feedback: false,
+                hide_on_close: true,
             },
             mouse: MouseConfig {
                 base_speed: 10.0,
