@@ -187,14 +187,11 @@ CHAR_MAP = {
 }
 
 def create_uinput_typist():
-    typing_keys = [mapping[0] for mapping in CHAR_MAP.values()]
-    keys = list(set(typing_keys + [
-        ecodes.KEY_LEFTSHIFT, ecodes.KEY_LEFTCTRL, ecodes.KEY_V, ecodes.KEY_ENTER, ecodes.KEY_SPACE
-    ]))
-    capabilities = {ecodes.EV_KEY: keys}
     for attempt in range(10):
         try:
-            ui = UInput(capabilities, name="Voice Dictation Typist")
+            # Instantiate full keyboard device without restricted key mapping so
+            # udev recognizes it as ID_INPUT_KEYBOARD=1 for Wayland compositors (like GNOME Mutter)
+            ui = UInput(name="Voice Dictation Typist")
             logger.info("Initialized virtual UInput typist device.")
             return ui
         except Exception as e:
@@ -455,21 +452,35 @@ class VoiceDaemon:
     def type_text(self, text: str):
         if self.paste_method == "keystrokes" and self.uinput:
             logger.info(f"Typing text via keystrokes: '{text}'")
+            # Normalize smart punctuation and symbols produced by Whisper
+            text = (
+                text.replace("“", "\"")
+                    .replace("”", "\"")
+                    .replace("‘", "'")
+                    .replace("’", "'")
+                    .replace("—", "-")
+                    .replace("–", "-")
+                    .replace("…", "...")
+            )
             for char in text:
                 if char in CHAR_MAP:
                     code, shift = CHAR_MAP[char]
                     if shift:
                         self.uinput.write(ecodes.EV_KEY, ecodes.KEY_LEFTSHIFT, 1)
                         self.uinput.syn()
+                        time.sleep(0.003)
                     self.uinput.write(ecodes.EV_KEY, code, 1)
                     self.uinput.syn()
-                    time.sleep(0.005)
+                    time.sleep(0.012)
                     self.uinput.write(ecodes.EV_KEY, code, 0)
                     self.uinput.syn()
                     if shift:
+                        time.sleep(0.003)
                         self.uinput.write(ecodes.EV_KEY, ecodes.KEY_LEFTSHIFT, 0)
                         self.uinput.syn()
-                    time.sleep(0.005)
+                    time.sleep(0.006)
+                else:
+                    logger.debug(f"Skipping unmapped character: {repr(char)}")
         else:
             logger.info(f"Pasting text via clipboard: '{text}'")
             if shutil.which("wl-copy"):
