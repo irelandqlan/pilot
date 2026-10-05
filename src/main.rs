@@ -50,25 +50,88 @@ pub struct GeneralConfig {
     pub hide_on_close: bool,
 }
 
-fn request_portal_background() {
-    let _ = std::process::Command::new("busctl")
+pub fn request_portal_background() {
+    let gdbus_res = std::process::Command::new("gdbus")
         .args([
-            "--user",
             "call",
+            "--session",
+            "--dest",
             "org.freedesktop.portal.Desktop",
+            "--object-path",
             "/org/freedesktop/portal/desktop",
-            "org.freedesktop.portal.Background",
-            "RequestBackground",
-            "sa{sv}",
+            "--method",
+            "org.freedesktop.portal.Background.RequestBackground",
             "",
-            "1",
-            "reason",
-            "s",
-            "Managing Chromecast Remote and Voice Services",
+            "{'reason': <'Managing Chromecast Remote and Voice Services'>}",
         ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn();
+
+    if gdbus_res.is_err() {
+        let _ = std::process::Command::new("busctl")
+            .args([
+                "--user",
+                "call",
+                "org.freedesktop.portal.Desktop",
+                "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.Background",
+                "RequestBackground",
+                "sa{sv}",
+                "",
+                "1",
+                "reason",
+                "s",
+                "Managing Chromecast Remote and Voice Services",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+}
+
+pub fn set_portal_background_status(status: &str) {
+    let msg = status.to_string();
+    std::thread::spawn(move || {
+        // 1. Try gdbus (standard in Flatpak GNOME runtime and desktop environments)
+        let escaped = msg.replace('\\', "\\\\").replace('\'', "\\'");
+        let gdbus_res = std::process::Command::new("gdbus")
+            .args([
+                "call",
+                "--session",
+                "--dest",
+                "org.freedesktop.portal.Desktop",
+                "--object-path",
+                "/org/freedesktop/portal/desktop",
+                "--method",
+                "org.freedesktop.portal.Background.SetStatus",
+                &format!("{{'message': <'{escaped}'>}}"),
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        if gdbus_res.is_err() || !gdbus_res.unwrap().success() {
+            // 2. Fallback to busctl on host systems
+            let _ = std::process::Command::new("busctl")
+                .args([
+                    "--user",
+                    "call",
+                    "org.freedesktop.portal.Desktop",
+                    "/org/freedesktop/portal/desktop",
+                    "org.freedesktop.portal.Background",
+                    "SetStatus",
+                    "a{sv}",
+                    "1",
+                    "message",
+                    "s",
+                    &msg,
+                ])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
+    });
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -522,6 +585,10 @@ fn main() {
         }
         load_custom_css();
         request_portal_background();
+        if let Ok(cfg) = load_config() {
+            let init_title = get_mode_title(&cfg.general.initial_mode);
+            set_portal_background_status(&format!("Active Layer: {}", init_title));
+        }
     });
 
     let supervisor_ui = supervisor.clone();
@@ -1872,6 +1939,8 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
                 let current_modes = get_available_modes(&cfg_lock);
                 if let Some(target) = current_modes.get(sel) {
                     let target_clone = target.clone();
+                    let target_title = get_mode_title(target);
+                    set_portal_background_status(&format!("Active Layer: {}", target_title));
                     drop(cfg_lock);
                     if let Ok(mut lock) = act_mode_c.try_borrow_mut() {
                         *lock = target_clone;
