@@ -212,6 +212,8 @@ pub fn create_virtual_input_device() -> Result<VirtualDevice, std::io::Error> {
         Key::KEY_HOMEPAGE, Key::KEY_BACK, Key::KEY_PLAYPAUSE, Key::KEY_STOPCD,
         Key::KEY_PREVIOUSSONG, Key::KEY_NEXTSONG, Key::KEY_SEARCH, Key::KEY_LEFTMETA,
         Key::KEY_RIGHTMETA, Key::KEY_SELECT, Key::KEY_OK,
+        // Application and vendor buttons (588 = YouTube, 589 = Netflix on Chromecast)
+        Key::new(587), Key::new(588), Key::new(589), Key::new(590), Key::new(591),
         // Mouse Buttons
         Key::BTN_LEFT, Key::BTN_RIGHT, Key::BTN_MIDDLE, Key::BTN_SIDE, Key::BTN_EXTRA,
     ];
@@ -231,6 +233,28 @@ pub fn create_virtual_input_device() -> Result<VirtualDevice, std::io::Error> {
         .with_keys(&keys)?
         .with_relative_axes(&rels)?
         .build()
+}
+
+pub fn evdev_code_to_key_str(code: u16) -> String {
+    match code {
+        587 => "KEY_CAMERA_ACCESS_ENABLE".to_string(),
+        588 => "KEY_CAMERA_ACCESS_DISABLE".to_string(), // YouTube button on Chromecast
+        589 => "KEY_CAMERA_ACCESS_TOGGLE".to_string(),  // Netflix button on Chromecast
+        590 => "KEY_ACCESSIBILITY".to_string(),
+        591 => "KEY_DO_NOT_DISTURB".to_string(),
+        584 => "KEY_DICTATE".to_string(),
+        585 => "KEY_EMOJI_PICKER".to_string(),
+        586 => "KEY_KBD_LAYOUT_NEXT".to_string(),
+        _ => {
+            let key = Key::new(code);
+            let s = format!("{:?}", key);
+            if s.starts_with("unknown key:") {
+                format!("KEY_{}", code)
+            } else {
+                s
+            }
+        }
+    }
 }
 
 pub fn parse_key_str(name: &str) -> Option<Key> {
@@ -258,6 +282,14 @@ pub fn parse_key_str(name: &str) -> Option<Key> {
         "KEY_PLAYPAUSE" => Some(Key::KEY_PLAYPAUSE),
         "KEY_NEXTSONG" => Some(Key::KEY_NEXTSONG),
         "KEY_PREVIOUSSONG" => Some(Key::KEY_PREVIOUSSONG),
+
+        // YouTube & Netflix buttons on Chromecast
+        "KEY_CAMERA_ACCESS_DISABLE" | "KEY_KBDILLUMUP" | "KEY_YOUTUBE" | "YOUTUBE" | "KEY_588" => {
+            Some(Key::new(588))
+        }
+        "KEY_CAMERA_ACCESS_TOGGLE" | "KEY_NETFLIX" | "NETFLIX" | "KEY_589" => {
+            Some(Key::new(589))
+        }
 
         // Modifiers
         "KEY_LEFTMETA" | "KEY_RIGHTMETA" | "KEY_META" | "KEY_SUPER" | "META" | "SUPER" => Some(Key::KEY_LEFTMETA),
@@ -786,7 +818,7 @@ pub fn run_remote_controller(
 
                         let code = ev.code();
                         let value = ev.value();
-                        let key_str = format!("{:?}", Key::new(code));
+                        let key_str = evdev_code_to_key_str(code);
 
                         // Broadcast to UI simulator socket for live visual testing
                         broadcast_ui_event(&key_str, value);
@@ -929,5 +961,15 @@ mod tests {
         assert_eq!(parse_mouse_dir("mouse:move_left"), Some(MouseDirection::Left));
         assert_eq!(parse_mouse_dir("action:mouse_move_right"), Some(MouseDirection::Right));
         assert_eq!(parse_mouse_dir("key:KEY_ENTER"), None);
+    }
+
+    #[test]
+    fn test_key_codes() {
+        assert_eq!(evdev_code_to_key_str(588), "KEY_CAMERA_ACCESS_DISABLE");
+        assert_eq!(evdev_code_to_key_str(589), "KEY_CAMERA_ACCESS_TOGGLE");
+        assert_eq!(parse_key_str("KEY_CAMERA_ACCESS_DISABLE"), Some(Key::new(588)));
+        assert_eq!(parse_key_str("KEY_CAMERA_ACCESS_TOGGLE"), Some(Key::new(589)));
+        assert_eq!(parse_key_str("youtube"), Some(Key::new(588)));
+        assert_eq!(parse_key_str("netflix"), Some(Key::new(589)));
     }
 }

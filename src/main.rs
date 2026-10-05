@@ -488,6 +488,26 @@ fn main() {
         supervisor_shutdown.stop_all();
     });
 
+    // Handle SIGTERM (e.g. GNOME Shell Quick Settings Background Apps 'X')
+    let supervisor_sigterm = supervisor.clone();
+    let app_sigterm = app.clone();
+    glib::unix_signal_add_local(libc::SIGTERM, move || {
+        eprintln!("[Pilot] Caught SIGTERM (GNOME Background Apps X clicked). Shutting down all workers...");
+        supervisor_sigterm.stop_all();
+        app_sigterm.quit();
+        glib::ControlFlow::Break
+    });
+
+    // Handle SIGINT (Ctrl+C in terminal)
+    let supervisor_sigint = supervisor.clone();
+    let app_sigint = app.clone();
+    glib::unix_signal_add_local(libc::SIGINT, move || {
+        eprintln!("[Pilot] Caught SIGINT. Shutting down all workers...");
+        supervisor_sigint.stop_all();
+        app_sigint.quit();
+        glib::ControlFlow::Break
+    });
+
     app.connect_startup(|_| {
         if let Some(display) = gtk::gdk::Display::default() {
             let theme = gtk::IconTheme::for_display(&display);
@@ -1705,6 +1725,7 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         .build();
     button_widgets.insert("KEY_KBDILLUMUP".into(), btn_yt.clone());
     button_widgets.insert("KEY_CAMERA_ACCESS_DISABLE".into(), btn_yt.clone());
+    button_widgets.insert("KEY_588".into(), btn_yt.clone());
 
     let btn_nf = gtk::Button::builder()
         .icon_name("netflix-symbolic")
@@ -1712,6 +1733,7 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
         .tooltip_text("Netflix Button (KEY_CAMERA_ACCESS_TOGGLE)")
         .build();
     button_widgets.insert("KEY_CAMERA_ACCESS_TOGGLE".into(), btn_nf.clone());
+    button_widgets.insert("KEY_589".into(), btn_nf.clone());
 
     row_apps.append(&btn_yt);
     row_apps.append(&btn_nf);
@@ -2659,9 +2681,26 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
             } else {
                 "Last Remote Event: "
             };
+            let display_name = match key_name.as_str() {
+                "KEY_CAMERA_ACCESS_DISABLE" | "KEY_KBDILLUMUP" | "KEY_588" => "YouTube Button",
+                "KEY_CAMERA_ACCESS_TOGGLE" | "KEY_589" => "Netflix Button",
+                "KEY_HOMEPAGE" => "Home Button",
+                "KEY_BACK" => "Back Button",
+                "KEY_SELECT" | "KEY_OK" => "Center (Select) Button",
+                "KEY_UP" => "D-Pad Up",
+                "KEY_DOWN" => "D-Pad Down",
+                "KEY_LEFT" => "D-Pad Left",
+                "KEY_RIGHT" => "D-Pad Right",
+                "KEY_MUTE" => "Mute Button",
+                "KEY_SCREENLOCK" | "KEY_COFFEE" => "Power Button",
+                "KEY_TV" => "TV / Input Button",
+                "KEY_VOLUMEUP" => "Volume Up",
+                "KEY_VOLUMEDOWN" => "Volume Down",
+                other => other,
+            };
             event_banner_rc.set_text(&format!(
                 "{}{} ({})",
-                prefix, key_name, state_label
+                prefix, display_name, state_label
             ));
 
             if let Some(btn) = btn_map_rc.get(&key_name) {

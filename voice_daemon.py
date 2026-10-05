@@ -171,6 +171,13 @@ class VoiceDaemon:
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
 
+        # Automatically terminate if parent process exits (prevents VRAM accumulation)
+        try:
+            libc = ctypes.CDLL("libc.so.6")
+            libc.prctl(1, signal.SIGTERM)
+        except Exception:
+            pass
+
         if self.enabled:
             threading.Thread(target=self._load_model, daemon=True).start()
             threading.Thread(target=self._run_dbus_service, daemon=True).start()

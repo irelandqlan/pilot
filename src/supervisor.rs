@@ -1,3 +1,4 @@
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -243,6 +244,13 @@ impl WorkerSupervisor {
             return true;
         }
 
+        // Kill any orphaned voice_daemon processes to prevent VRAM memory leak
+        let _ = Command::new("pkill")
+            .args(["-f", "voice_daemon.py"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
         stop_systemd_unit_if_active(&["pilot-voice.service", "chromecast-voice.service"]);
 
         let python = Self::find_python();
@@ -255,11 +263,15 @@ impl WorkerSupervisor {
         };
 
         eprintln!("[Supervisor] Spawning voice daemon: {:?} {:?}", python, script);
-        match Command::new(&python)
-            .arg(&script)
-            .env("PYTHONUNBUFFERED", "1")
-            .spawn()
-        {
+        let mut cmd = Command::new(&python);
+        cmd.arg(&script).env("PYTHONUNBUFFERED", "1");
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                Ok(())
+            });
+        }
+        match cmd.spawn() {
             Ok(child) => {
                 *lock = Some(child);
                 true
@@ -293,6 +305,13 @@ impl WorkerSupervisor {
             return true;
         }
 
+        // Kill any orphaned atvvoice processes
+        let _ = Command::new("pkill")
+            .args(["-x", "atvvoice"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
         stop_systemd_unit_if_active(&["atvvoice.service"]);
 
         let bin = match Self::find_atvvoice() {
@@ -310,6 +329,13 @@ impl WorkerSupervisor {
             cmd.args(["-d", mac, "--frame-timeout", "0", "-g", "10"]);
         } else {
             cmd.args(["--frame-timeout", "0", "-g", "10"]);
+        }
+
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                Ok(())
+            });
         }
 
         eprintln!("[Supervisor] Spawning atvvoice: {:?}", bin);
