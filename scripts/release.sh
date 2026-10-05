@@ -140,23 +140,31 @@ cmd_abort() {
     git status --short
 }
 
+RELEASE_SUCCESS="false"
+RELEASE_VERSION=""
+ORIGINAL_BRANCH=""
+
+cleanup_on_error() {
+    if [ "${RELEASE_SUCCESS:-false}" != "true" ]; then
+        echo ""
+        echo "Warning: Release process interrupted or failed!"
+        local target="${RELEASE_VERSION:-}"
+        local branch="${ORIGINAL_BRANCH:-develop}"
+        if [ -n "$target" ]; then
+            echo "To cleanly roll back changes and return to '${branch}', run:"
+            echo "  just release abort ${target}"
+        fi
+    fi
+}
+trap cleanup_on_error EXIT INT TERM
+
 cmd_create() {
     local raw_ver="$1"
-    local version="${raw_ver#v}"
+    RELEASE_VERSION="${raw_ver#v}"
+    local version="${RELEASE_VERSION}"
     local tag="v${version}"
-    local original_branch
-    original_branch=$(git rev-parse --abbrev-ref HEAD)
-    local release_success=false
-
-    cleanup_on_error() {
-        if [ "$release_success" != "true" ]; then
-            echo ""
-            echo "Warning: Release process interrupted or failed!"
-            echo "To cleanly roll back changes and return to '${original_branch}', run:"
-            echo "  just release abort ${version}"
-        fi
-    }
-    trap cleanup_on_error EXIT INT TERM
+    ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    RELEASE_SUCCESS="false"
 
     echo "==> Preparing release ${tag}..."
 
@@ -167,8 +175,8 @@ cmd_create() {
     fi
 
     # Pre-flight check: branch check
-    if [ "$original_branch" != "develop" ] && [ "$original_branch" != "master" ]; then
-        echo "Error: Releases must be triggered from 'develop' or 'master' branch (currently on '$original_branch')."
+    if [ "$ORIGINAL_BRANCH" != "develop" ] && [ "$ORIGINAL_BRANCH" != "master" ]; then
+        echo "Error: Releases must be triggered from 'develop' or 'master' branch (currently on '$ORIGINAL_BRANCH')."
         exit 1
     fi
 
@@ -185,7 +193,7 @@ cmd_create() {
     fi
 
     # If starting on develop, merge into master first
-    if [ "$original_branch" = "develop" ]; then
+    if [ "$ORIGINAL_BRANCH" = "develop" ]; then
         echo "==> Merging develop into master first..."
         cmd_sync
         git checkout master
@@ -211,11 +219,12 @@ cmd_create() {
     fi
 
     # Commit version bump if there are changes
-    if ! git diff-index --quiet HEAD --; then
+    git update-index -q --refresh 2>/dev/null || true
+    if ! git diff --quiet HEAD -- Cargo.toml pilot.spec "$metainfo"; then
         echo "==> Committing release bump..."
-        git commit -am "chore: bump version to ${version}"
+        git commit -m "chore: bump version to ${version}" Cargo.toml pilot.spec "$metainfo"
     else
-        echo "==> Version already set to ${version} on master, skipping commit."
+        echo "==> Version files already up to date for ${version}, no commit needed."
     fi
 
     echo "==> Creating git tag ${tag}..."
@@ -228,7 +237,7 @@ cmd_create() {
     fi
 
     # If release started from develop, merge master back into develop so versions stay in sync
-    if [ "$original_branch" = "develop" ]; then
+    if [ "$ORIGINAL_BRANCH" = "develop" ]; then
         echo "==> Updating develop with the release commit..."
         git checkout develop
         git merge master -m "Merge master into develop after ${tag}"
@@ -237,7 +246,7 @@ cmd_create() {
         fi
     fi
 
-    release_success=true
+    RELEASE_SUCCESS="true"
     echo ""
     echo "Release ${tag} created and published successfully!"
 }
