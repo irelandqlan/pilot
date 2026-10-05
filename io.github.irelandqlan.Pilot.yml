@@ -46,7 +46,7 @@ modules:
   - name: pilot
     buildsystem: simple
     build-commands:
-      - pip install --no-cache-dir --prefix=/app evdev faster-whisper dbus-fast
+      - pip install --no-cache-dir --prefix=/app "av<19" evdev faster-whisper dbus-fast
       - cargo build --release
       - install -Dm755 target/release/pilot /app/bin/pilot
       - ln -s pilot /app/bin/chromecast-settings
