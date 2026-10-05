@@ -4,11 +4,23 @@
 default:
     @just --list
 
-# ── Development & Testing ───────────────────────────────────────────────────
+# ── Application Execution ───────────────────────────────────────────────────
 
-# Run Pilot settings GUI with cargo
-run *args:
-    cargo run -- {{args}}
+# Run Pilot GUI (just run [native|flatpak] [args])
+run target="native" *args="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{target}}" = "flatpak" ]; then
+        echo "==> Running Flatpak application io.github.irelandqlan.Pilot..."
+        flatpak run io.github.irelandqlan.Pilot {{args}}
+    elif [ "{{target}}" = "native" ]; then
+        cargo run -- {{args}}
+    else
+        # Target was a cargo flag/argument (e.g. just run --help)
+        cargo run -- {{target}} {{args}}
+    fi
+
+# ── Development & Testing ───────────────────────────────────────────────────
 
 # Run all unit tests
 test:
@@ -38,9 +50,9 @@ service action="status":
 
 # ── Packaging & Distribution ────────────────────────────────────────────────
 
-# Package management (flatpak, bundle, run, rpm, install)
-pkg target="help":
-    ./scripts/pkg.sh {{target}}
+# Package management (native rpm|install, flatpak bundle|install)
+pkg target="help" action="" *args="":
+    ./scripts/pkg.sh {{target}} {{action}} {{args}}
 
 # ── Releases & Git ──────────────────────────────────────────────────────────
 
@@ -70,19 +82,19 @@ start: (service "start")
 logs: (service "logs")
 
 [private]
-flatpak: (pkg "flatpak")
+flatpak: (pkg "flatpak" "install")
 
 [private]
-flatpak-bundle: (pkg "bundle")
+flatpak-bundle: (pkg "flatpak" "bundle")
 
 [private]
-flatpak-run: (pkg "run")
+flatpak-run: (run "flatpak")
 
 [private]
-rpm: (pkg "rpm")
+rpm: (pkg "native" "rpm")
 
 [private]
-rpm-install: (pkg "install")
+rpm-install: (pkg "native" "install")
 
 [private]
 abort-release version="": (release "abort" version)

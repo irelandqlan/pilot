@@ -1,28 +1,35 @@
 #!/usr/bin/env bash
 # Pilot Packaging Utility
-# Handles RPM and Flatpak local builds, bundles, and installations.
+# Handles Native (RPM, Install, Run) and Flatpak (Bundle, Install, Run) targets.
 
 set -euo pipefail
 
 usage() {
     local code="${1:-0}"
-    echo "Usage: just pkg <command>"
+    echo "Usage: just pkg <native | flatpak> <subcommand>"
     echo ""
-    echo "Commands:"
-    echo "  flatpak       Build and install Flatpak package locally"
-    echo "  bundle        Build standalone Flatpak bundle in dist/"
-    echo "  run           Run the installed Flatpak application"
-    echo "  rpm           Build Fedora RPM package into dist/"
-    echo "  install       Install built RPM onto the system via dnf"
+    echo "Native targets:"
+    echo "  just pkg native rpm       Build Fedora RPM package into dist/"
+    echo "  just pkg native install   Install built RPM onto the system via dnf"
+    echo ""
+    echo "Flatpak targets:"
+    echo "  just pkg flatpak bundle   Build standalone .flatpak bundle in dist/"
+    echo "  just pkg flatpak install  Build and install Flatpak package locally"
+    echo ""
+    echo "Run application:"
+    echo "  just run native           Run native release build"
+    echo "  just run flatpak          Run installed Flatpak application"
     exit "$code"
 }
 
-cmd_flatpak() {
+# --- Flatpak Subcommands ---
+
+cmd_flatpak_install() {
     echo "==> Building and installing Flatpak package locally..."
     flatpak-builder --disable-rofiles-fuse --force-clean --user --install build/flatpak io.github.irelandqlan.Pilot.yml
 }
 
-cmd_bundle() {
+cmd_flatpak_bundle() {
     local version
     version=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
     mkdir -p dist build/flatpak-repo
@@ -33,12 +40,14 @@ cmd_bundle() {
     echo "✅ Flatpak bundle ready at dist/pilot-v${version}.flatpak"
 }
 
-cmd_run() {
+cmd_flatpak_run() {
     echo "==> Running Flatpak application io.github.irelandqlan.Pilot..."
-    flatpak run io.github.irelandqlan.Pilot
+    flatpak run io.github.irelandqlan.Pilot "$@"
 }
 
-cmd_rpm() {
+# --- Native Subcommands ---
+
+cmd_native_rpm() {
     local version
     version=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
     echo "==> Packaging Pilot v${version} RPM..."
@@ -55,8 +64,8 @@ cmd_rpm() {
     ls -lh dist/*.rpm
 }
 
-cmd_install() {
-    cmd_rpm
+cmd_native_install() {
+    cmd_native_rpm
     local rpm_file
     rpm_file=$(ls -t dist/pilot-*.rpm 2>/dev/null | head -n1)
     if [ -z "$rpm_file" ]; then
@@ -68,16 +77,55 @@ cmd_install() {
     echo "✅ Pilot installed! Launch with 'pilot' or manage with 'just service status'."
 }
 
-ACTION="${1:-help}"
-case "$ACTION" in
-    flatpak)  cmd_flatpak ;;
-    bundle)   cmd_bundle ;;
-    run)      cmd_run ;;
-    rpm)      cmd_rpm ;;
-    install)  cmd_install ;;
-    help|--help|-h) usage ;;
+cmd_native_run() {
+    echo "==> Running native release build..."
+    cargo run --release -- "$@"
+}
+
+# --- Dispatcher ---
+
+TARGET="${1:-help}"
+shift || true
+ACTION="${1:-}"
+if [ -n "$ACTION" ]; then
+    shift || true
+fi
+
+case "$TARGET" in
+    native)
+        case "$ACTION" in
+            rpm|"")        cmd_native_rpm ;;
+            install)       cmd_native_install ;;
+            run)           cmd_native_run "$@" ;;
+            help|--help|-h) usage ;;
+            *)
+                echo "❌ Unknown native action: $ACTION"
+                usage 1
+                ;;
+        esac
+        ;;
+    flatpak)
+        case "$ACTION" in
+            bundle)        cmd_flatpak_bundle ;;
+            install|"")    cmd_flatpak_install ;;
+            run)           cmd_flatpak_run "$@" ;;
+            help|--help|-h) usage ;;
+            *)
+                echo "❌ Unknown flatpak action: $ACTION"
+                usage 1
+                ;;
+        esac
+        ;;
+    # Shortcuts for convenience
+    rpm)      cmd_native_rpm ;;
+    bundle)   cmd_flatpak_bundle ;;
+    install)  cmd_native_install ;;
+    run)      cmd_flatpak_run "$@" ;;
+    help|--help|-h)
+        usage
+        ;;
     *)
-        echo "❌ Unknown packaging command: $ACTION"
+        echo "❌ Unknown packaging target: $TARGET"
         usage 1
         ;;
 esac
