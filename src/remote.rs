@@ -650,8 +650,6 @@ pub fn execute_action(
             if let Some(idx) = available_modes.iter().position(|m| m == &*cur) {
                 let next = &available_modes[(idx + 1) % available_modes.len()];
                 *cur = next.clone();
-                let next_title = crate::get_mode_title(next);
-                crate::set_portal_background_status(&format!("Active Layer: {}", next_title));
                 if sound_enabled {
                     play_sound(next);
                 }
@@ -660,16 +658,12 @@ pub fn execute_action(
                 }
             } else if let Some(first) = available_modes.first() {
                 *cur = first.clone();
-                let first_title = crate::get_mode_title(first);
-                crate::set_portal_background_status(&format!("Active Layer: {}", first_title));
             }
         }
         s if s.starts_with("switch_mode:") => {
             let target = s.strip_prefix("switch_mode:").unwrap();
             let mut cur = active_mode.lock().unwrap();
             *cur = target.to_string();
-            let target_title = crate::get_mode_title(target);
-            crate::set_portal_background_status(&format!("Active Layer: {}", target_title));
             if sound_enabled {
                 play_sound(target);
             }
@@ -759,8 +753,6 @@ pub fn run_remote_controller(
     let mouse = MouseEngine::new(uinput.clone(), config_arc.clone());
 
     let initial_mode = { config_arc.read().unwrap().general.initial_mode.clone() };
-    let initial_title = crate::get_mode_title(&initial_mode);
-    crate::set_portal_background_status(&format!("Active Layer: {}", initial_title));
     let active_mode = Arc::new(Mutex::new(initial_mode));
 
     while !stop_flag.load(Ordering::SeqCst) {
@@ -799,9 +791,7 @@ pub fn run_remote_controller(
             }
         }
 
-        let cur_mode = active_mode.lock().unwrap().clone();
-        let cur_title = crate::get_mode_title(&cur_mode);
-        crate::set_portal_background_status(&format!("Active Layer: {}", cur_title));
+        crate::set_portal_background_status("Connected");
 
         let fd = device.as_raw_fd();
         let mut poll_fd = libc::pollfd {

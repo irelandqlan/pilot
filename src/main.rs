@@ -585,10 +585,7 @@ fn main() {
         }
         load_custom_css();
         request_portal_background();
-        if let Ok(cfg) = load_config() {
-            let init_title = get_mode_title(&cfg.general.initial_mode);
-            set_portal_background_status(&format!("Active Layer: {}", init_title));
-        }
+        set_portal_background_status("Searching for remote...");
     });
 
     let supervisor_ui = supervisor.clone();
@@ -1939,8 +1936,6 @@ fn build_ui(app: &adw::Application, supervisor: &WorkerSupervisor) {
                 let current_modes = get_available_modes(&cfg_lock);
                 if let Some(target) = current_modes.get(sel) {
                     let target_clone = target.clone();
-                    let target_title = get_mode_title(target);
-                    set_portal_background_status(&format!("Active Layer: {}", target_title));
                     drop(cfg_lock);
                     if let Ok(mut lock) = act_mode_c.try_borrow_mut() {
                         *lock = target_clone;
