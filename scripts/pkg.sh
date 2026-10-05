@@ -6,19 +6,21 @@ set -euo pipefail
 
 usage() {
     local code="${1:-0}"
-    echo "Usage: just pkg <native | flatpak> <subcommand>"
-    echo ""
-    echo "Native targets:"
-    echo "  just pkg native rpm       Build Fedora RPM package into dist/"
-    echo "  just pkg native install   Install built RPM onto the system via dnf"
-    echo ""
-    echo "Flatpak targets:"
-    echo "  just pkg flatpak bundle   Build standalone .flatpak bundle in dist/"
-    echo "  just pkg flatpak install  Build and install Flatpak package locally"
-    echo ""
-    echo "Run application:"
-    echo "  just run native           Run native release build"
-    echo "  just run flatpak          Run installed Flatpak application"
+    cat << 'EOF'
+Usage: just pkg <native | flatpak> <subcommand>
+
+Native targets:
+  just pkg native rpm       Build Fedora RPM package (.rpm) in dist/
+  just pkg native install   Install built RPM package onto the host via dnf
+
+Flatpak targets:
+  just pkg flatpak install  Build and install Flatpak package locally into user environment
+  just pkg flatpak bundle   Build standalone .flatpak ostree bundle in dist/
+
+Run targets:
+  just run native           Launch native development GUI with cargo
+  just run flatpak          Launch installed Flatpak application
+EOF
     exit "$code"
 }
 
@@ -37,7 +39,7 @@ cmd_flatpak_bundle() {
     flatpak-builder --disable-rofiles-fuse --force-clean --repo=build/flatpak-repo build/flatpak io.github.irelandqlan.Pilot.yml
     echo "==> Creating standalone bundle dist/pilot-v${version}.flatpak..."
     flatpak build-bundle build/flatpak-repo "dist/pilot-v${version}.flatpak" io.github.irelandqlan.Pilot master
-    echo "✅ Flatpak bundle ready at dist/pilot-v${version}.flatpak"
+    echo "Flatpak bundle ready at dist/pilot-v${version}.flatpak"
 }
 
 cmd_flatpak_run() {
@@ -60,7 +62,7 @@ cmd_native_rpm() {
     rpmbuild --define "_topdir ${build_dir}" -ba pilot.spec
     cp "${build_dir}/RPMS/"*/*.rpm dist/
     echo ""
-    echo "✅ Pilot RPM built successfully in dist/:"
+    echo "Pilot RPM built successfully in dist/:"
     ls -lh dist/*.rpm
 }
 
@@ -69,12 +71,12 @@ cmd_native_install() {
     local rpm_file
     rpm_file=$(ls -t dist/pilot-*.rpm 2>/dev/null | head -n1)
     if [ -z "$rpm_file" ]; then
-        echo "❌ Error: No RPM file found in dist/"
+        echo "Error: No RPM file found in dist/"
         exit 1
     fi
     echo "==> Installing ${rpm_file} via dnf..."
     sudo dnf install -y --nogpgcheck "${rpm_file}"
-    echo "✅ Pilot installed! Launch with 'pilot' or manage with 'just service status'."
+    echo "Pilot installed! Launch with 'pilot' or manage with 'just service status'."
 }
 
 cmd_native_run() {
@@ -99,7 +101,7 @@ case "$TARGET" in
             run)           cmd_native_run "$@" ;;
             help|--help|-h) usage ;;
             *)
-                echo "❌ Unknown native action: $ACTION"
+                echo "Error: Unknown native action: $ACTION"
                 usage 1
                 ;;
         esac
@@ -111,7 +113,7 @@ case "$TARGET" in
             run)           cmd_flatpak_run "$@" ;;
             help|--help|-h) usage ;;
             *)
-                echo "❌ Unknown flatpak action: $ACTION"
+                echo "Error: Unknown flatpak action: $ACTION"
                 usage 1
                 ;;
         esac
@@ -125,7 +127,7 @@ case "$TARGET" in
         usage
         ;;
     *)
-        echo "❌ Unknown packaging target: $TARGET"
+        echo "Error: Unknown packaging target: $TARGET"
         usage 1
         ;;
 esac

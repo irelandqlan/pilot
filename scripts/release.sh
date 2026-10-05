@@ -6,20 +6,26 @@ set -euo pipefail
 
 usage() {
     local code="${1:-0}"
-    echo "Usage: just release <command | version> [options]"
-    echo ""
-    echo "Commands:"
-    echo "  <version>           Create and publish a new release (e.g. just release 0.2.1)"
-    echo "  create <version>    Explicit release creation"
-    echo "  abort [version]     Roll back an interrupted/failed release"
-    echo "  sync                Safely merge 'develop' into 'master' and push"
+    cat << 'EOF'
+Usage: just release <command | version>
+
+Release Workflow Commands:
+  just release <version>        Create, tag, and publish release (e.g. 0.2.1)
+  just release create <version> Explicit release creation
+  just release abort [version]  Roll back an interrupted/failed release and restore branch
+  just release sync             Safely merge 'develop' into 'master' and push
+
+Examples:
+  just release 0.2.1            # Tests, bumps version, commits, tags, and pushes v0.2.1
+  just release abort            # Restores working tree, deletes unpushed tag, returns to develop
+EOF
     exit "$code"
 }
 
 cmd_sync() {
     echo "==> Checking git working directory..."
     if ! git diff-index --quiet HEAD --; then
-        echo "❌ Error: You have uncommitted changes. Please commit or stash them before merging."
+        echo "Error: You have uncommitted changes. Please commit or stash them before merging."
         exit 1
     fi
 
@@ -47,7 +53,7 @@ cmd_sync() {
 
     echo "==> Switching back to develop..."
     git checkout develop
-    echo "✅ Successfully merged develop into master!"
+    echo "Successfully merged develop into master!"
 }
 
 cmd_abort() {
@@ -129,8 +135,8 @@ cmd_abort() {
     rm -rf build dist .flatpak-builder
 
     echo ""
-    echo "✅ Release aborted and workspace cleaned successfully!"
-    echo "   Current branch: $(git rev-parse --abbrev-ref HEAD)"
+    echo "Release aborted and workspace cleaned successfully."
+    echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
     git status --short
 }
 
@@ -145,9 +151,9 @@ cmd_create() {
     cleanup_on_error() {
         if [ "$release_success" != "true" ]; then
             echo ""
-            echo "⚠️ Release process interrupted or failed!"
-            echo "   To cleanly roll back changes and return to '${original_branch}', run:"
-            echo "   just release abort ${version}"
+            echo "Warning: Release process interrupted or failed!"
+            echo "To cleanly roll back changes and return to '${original_branch}', run:"
+            echo "  just release abort ${version}"
         fi
     }
     trap cleanup_on_error EXIT INT TERM
@@ -156,24 +162,24 @@ cmd_create() {
 
     # Pre-flight check: working tree clean
     if ! git diff-index --quiet HEAD --; then
-        echo "❌ Error: Working tree has uncommitted changes. Please commit or stash them first."
+        echo "Error: Working tree has uncommitted changes. Please commit or stash them first."
         exit 1
     fi
 
     # Pre-flight check: branch check
     if [ "$original_branch" != "develop" ] && [ "$original_branch" != "master" ]; then
-        echo "❌ Error: Releases must be triggered from 'develop' or 'master' branch (currently on '$original_branch')."
+        echo "Error: Releases must be triggered from 'develop' or 'master' branch (currently on '$original_branch')."
         exit 1
     fi
 
     # Pre-flight check: ensure tag does not already exist
     if git rev-parse "${tag}" >/dev/null 2>&1; then
-        echo "❌ Error: Tag '${tag}' already exists locally! Run 'just release abort ${version}' if this was an interrupted release."
+        echo "Error: Tag '${tag}' already exists locally! Run 'just release abort ${version}' if this was an interrupted release."
         exit 1
     fi
     if git remote | grep -q origin; then
         if git ls-remote --tags origin "refs/tags/${tag}" 2>/dev/null | grep -q "refs/tags/${tag}"; then
-            echo "❌ Error: Tag '${tag}' already exists on remote origin!"
+            echo "Error: Tag '${tag}' already exists on remote origin!"
             exit 1
         fi
     fi
@@ -233,7 +239,7 @@ cmd_create() {
 
     release_success=true
     echo ""
-    echo "🎉 Release ${tag} created and published!"
+    echo "Release ${tag} created and published successfully!"
 }
 
 # Main dispatcher
@@ -252,7 +258,7 @@ case "$ACTION" in
         ;;
     create)
         if [ -z "${1:-}" ]; then
-            echo "❌ Error: Version required. Example: just release create 0.2.1"
+            echo "Error: Version required. Example: just release create 0.2.1"
             exit 1
         fi
         cmd_create "$1"
@@ -261,7 +267,7 @@ case "$ACTION" in
         cmd_create "$ACTION"
         ;;
     *)
-        echo "❌ Unknown command or invalid version: $ACTION"
+        echo "Error: Unknown command or invalid version: $ACTION"
         usage 1
         ;;
 esac
