@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-rpm:
+    name: Build RPM Package
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+
+    steps:
+      - name: Install System Dependencies
+        run: |
+          dnf install -y git gcc pkgconf-pkg-config openssl-devel gtk4-devel libadwaita-devel cargo rust rpm-build systemd-rpm-macros
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure Git Safe Directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Cache Rust Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build RPM Package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
+          fi
+          echo "Building RPM for version: ${VERSION}"
+          sed -i -E "s/^Version:\s+[0-9.]+/Version:        ${VERSION}/" pilot.spec
+
+          BUILD_DIR="$(pwd)/build/rpm"
+          mkdir -p "${BUILD_DIR}/"{BUILD,RPMS,SOURCES,SPECS,SRPMS} dist
+          tar --exclude-vcs --exclude="./target" --exclude="./venv" --exclude="./build" --exclude="./dist" --exclude="./models" \
+              --transform "s,^\.,pilot-${VERSION}," -czf "${BUILD_DIR}/SOURCES/pilot-${VERSION}.tar.gz" .
+          rpmbuild --define "_topdir ${BUILD_DIR}" -ba pilot.spec
+          cp "${BUILD_DIR}/RPMS/"*/*.rpm dist/
+
+      - name: Upload RPM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-rpm
+          path: dist/*.rpm
+
+  build-flatpak:
+    name: Build Flatpak Bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Enable Unprivileged User Namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Install Flatpak & Flatpak Builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build Standalone Flatpak Bundle
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
+          fi
+          echo "Building Flatpak bundle for version: ${VERSION}"
+
+          mkdir -p dist build/flatpak-repo
+          flatpak-builder --user --install-deps-from=flathub --force-clean --disable-rofiles-fuse --repo=build/flatpak-repo build/flatpak io.github.irelandqlan.Pilot.yml
+          flatpak build-bundle build/flatpak-repo "dist/pilot-v${VERSION}.flatpak" io.github.irelandqlan.Pilot master
+
+      - name: Upload Flatpak Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilot-flatpak
+          path: dist/*.flatpak
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-rpm, build-flatpak]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Built Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List Release Assets
+        run: |
+          echo "Release assets ready for publication in dist/:"
+          ls -lh dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.rpm
+            dist/*.flatpak
+          generate_release_notes: true
