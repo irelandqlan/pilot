@@ -77,19 +77,64 @@ def load_voice_config():
             return cfg.get("voice", {})
     return {}
 
-# Preload NVIDIA CUDA runtime libraries if present in venv
-try:
-    site_pkg = Path(__file__).resolve().parent / "venv" / "lib64" / "python3.14" / "site-packages"
-    if not site_pkg.exists():
-        site_pkg = Path(__file__).resolve().parent / "venv" / "lib" / "python3.14" / "site-packages"
-    for _p in site_pkg.glob("nvidia/*/lib"):
-        for _so in _p.glob("*.so*"):
+# Dynamic preloader for NVIDIA CUDA runtime libraries (e.g. libcublas) with RTLD_GLOBAL
+def _preload_cuda_libraries():
+    search_dirs = set()
+    try:
+        import site
+        if hasattr(site, "getsitepackages"):
+            for p in site.getsitepackages():
+                search_dirs.add(Path(p))
+        if hasattr(site, "getusersitepackages"):
+            usp = site.getusersitepackages()
+            if isinstance(usp, str):
+                search_dirs.add(Path(usp))
+    except Exception:
+        pass
+
+    for p in sys.path:
+        if p:
             try:
-                ctypes.CDLL(str(_so))
+                search_dirs.add(Path(p))
             except Exception:
                 pass
+
+    # Check local venv relative to this file
+    base = Path(__file__).resolve().parent
+    for venv_path in [base / "venv", base.parent / "venv"]:
+        if venv_path.exists():
+            for sp in venv_path.glob("lib*/python*/site-packages"):
+                search_dirs.add(sp)
+
+    # Check Flatpak /app paths
+    for app_sp in Path("/app").glob("lib*/python*/site-packages"):
+        search_dirs.add(app_sp)
+
+    cuda_lib_dirs = []
+    for sp in search_dirs:
+        if not sp.is_dir():
+            continue
+        for nvd in sp.glob("nvidia/*/lib"):
+            if nvd.is_dir():
+                cuda_lib_dirs.append(str(nvd))
+                # Sort so helper libs like cublasLt load before cublas
+                so_files = sorted(nvd.glob("*.so*"), key=lambda f: ("cublasLt" not in f.name, f.name))
+                for so in so_files:
+                    try:
+                        ctypes.CDLL(str(so), mode=ctypes.RTLD_GLOBAL)
+                    except Exception:
+                        pass
+
+    if cuda_lib_dirs:
+        existing_ld = os.environ.get("LD_LIBRARY_PATH", "")
+        new_ld = ":".join(cuda_lib_dirs + ([existing_ld] if existing_ld else []))
+        os.environ["LD_LIBRARY_PATH"] = new_ld
+
+try:
+    _preload_cuda_libraries()
 except Exception:
     pass
+
 
 import evdev
 from evdev import ecodes, UInput
@@ -204,6 +249,12 @@ class VoiceDaemon:
                     pass
         sys.exit(0)
 
+    def _verify_model_cuda(self):
+        """Warm up and verify CUDA inference works to detect missing libraries immediately."""
+        import numpy as np
+        dummy_audio = np.zeros(16000, dtype=np.float32)
+        list(self.model.transcribe(dummy_audio, beam_size=1)[0])
+
     def _load_model(self):
         try:
             self.model_loading = True
@@ -212,23 +263,41 @@ class VoiceDaemon:
             from faster_whisper import WhisperModel
             t0 = time.time()
 
-            def _init(local_only: bool):
+            def _init(device: str, compute_type: str, local_only: bool):
                 kwargs = {
-                    "device": self.device,
-                    "compute_type": self.compute_type,
+                    "device": device,
+                    "compute_type": compute_type,
                     "local_files_only": local_only,
                 }
-                if self.device != "cuda":
+                if device != "cuda":
                     kwargs["cpu_threads"] = 6
                 return WhisperModel(self.model_name, **kwargs)
 
             try:
-                self.model = _init(local_only=True)
-                logger.info(f"Loaded cached Whisper model '{self.model_name}' in {time.time() - t0:.2f}s.")
-            except Exception:
-                logger.info(f"Model '{self.model_name}' not found in local cache; downloading...")
-                self.model = _init(local_only=False)
-                logger.info(f"Downloaded and loaded Whisper model in {time.time() - t0:.2f}s.")
+                self.model = _init(self.device, self.compute_type, local_only=True)
+                if self.device == "cuda":
+                    self._verify_model_cuda()
+                logger.info(f"Loaded cached Whisper model '{self.model_name}' on {self.device} in {time.time() - t0:.2f}s.")
+            except Exception as e:
+                err_str = str(e).lower()
+                if self.device == "cuda" and any(k in err_str for k in ["libcublas", "cuda", "cublas", "out of memory"]):
+                    logger.warning(f"CUDA initialization failed ({e}); falling back to CPU (int8)...")
+                    self.device = "cpu"
+                    self.compute_type = "int8"
+                    self.model = _init("cpu", "int8", local_only=True)
+                    logger.info(f"Loaded cached Whisper model '{self.model_name}' on CPU in {time.time() - t0:.2f}s.")
+                else:
+                    logger.info(f"Model '{self.model_name}' not found in local cache; downloading...")
+                    self.model = _init(self.device, self.compute_type, local_only=False)
+                    if self.device == "cuda":
+                        try:
+                            self._verify_model_cuda()
+                        except Exception as cuda_err:
+                            logger.warning(f"CUDA initialization failed after download ({cuda_err}); falling back to CPU (int8)...")
+                            self.device = "cpu"
+                            self.compute_type = "int8"
+                            self.model = _init("cpu", "int8", local_only=True)
+                    logger.info(f"Downloaded and loaded Whisper model in {time.time() - t0:.2f}s.")
         except Exception as e:
             self.model_load_error = str(e)
             logger.error(f"Failed to load Whisper model: {e}")
@@ -348,9 +417,34 @@ class VoiceDaemon:
             if text:
                 if self.auto_spacing and not text.endswith(" "):
                     text = text + " "
-                self.type_text(text)
         except Exception as e:
-            logger.error(f"Error during transcription: {e}")
+            err_msg = str(e)
+            logger.error(f"Error during transcription: {err_msg}")
+            if self.device == "cuda" and any(k in err_msg.lower() for k in ["cuda", "cublas", "out of memory", "cudnn"]):
+                logger.warning("CUDA error during transcription. Re-initializing Whisper model on CPU (int8) as fallback...")
+                try:
+                    self.device = "cpu"
+                    self.compute_type = "int8"
+                    from faster_whisper import WhisperModel
+                    self.model = WhisperModel(self.model_name, device="cpu", compute_type="int8", cpu_threads=6)
+                    logger.info("Successfully re-initialized Whisper model on CPU. Retrying transcription...")
+                    segments, _ = self.model.transcribe(
+                        self.temp_wav,
+                        beam_size=1,
+                        temperature=0.0,
+                        condition_on_previous_text=False,
+                        vad_filter=True,
+                        vad_parameters=dict(min_silence_duration_ms=250)
+                    )
+                    text = " ".join(seg.text for seg in segments).strip()
+                    elapsed = time.time() - t0
+                    logger.info(f"Transcribed (CPU fallback) in {elapsed:.2f}s: '{text}'")
+                    if text:
+                        if self.auto_spacing and not text.endswith(" "):
+                            text = text + " "
+                        self.type_text(text)
+                except Exception as fallback_err:
+                    logger.error(f"Fallback transcription on CPU also failed: {fallback_err}")
         finally:
             if os.path.exists(self.temp_wav):
                 try:
