@@ -414,6 +414,7 @@ class VoiceDaemon:
             if text:
                 if self.auto_spacing and not text.endswith(" "):
                     text = text + " "
+                self.type_text(text)
         except Exception as e:
             err_msg = str(e)
             logger.error(f"Error during transcription: {err_msg}")
